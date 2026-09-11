@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+import org.springframework.web.bind.annotation.PathVariable;
+
 @RestController
 @RequestMapping("/api/employees")
 public class EmployeeController {
@@ -23,4 +25,11 @@ public class EmployeeController {
     public List<Employee> getAllEmployees() {
         return employeeService.getAllEmployees();
     }
+
+    // Get one employee by ID
+@GetMapping("/{id}")
+public Employee getEmployeeById(@PathVariable Long id) {
+    return employeeService.getEmployeeById(id);
+}
+
 }

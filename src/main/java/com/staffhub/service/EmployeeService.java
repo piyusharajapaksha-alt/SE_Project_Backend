@@ -19,4 +19,10 @@ public class EmployeeService {
     public List<Employee> getAllEmployees() {
         return employeeRepository.findAll();
     }
+
+    // Get one employee by ID
+    public Employee getEmployeeById(Long id) {
+        return employeeRepository.findById(id);
+    }
+
 }
