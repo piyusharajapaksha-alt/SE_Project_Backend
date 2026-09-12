@@ -63,4 +63,40 @@ public Employee findById(Long id) {
         return employee;
     }, id);
  }
+
+ // Create a new employee
+public int save(Employee employee) {
+
+    String sql = """
+            INSERT INTO employees (
+                employee_number,
+                first_name,
+                last_name,
+                email,
+                phone,
+                department,
+                position,
+                role,
+                employment_status
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """;
+
+    return jdbcTemplate.update(
+            sql,
+            employee.getEmployeeNumber(),
+            employee.getFirstName(),
+            employee.getLastName(),
+            employee.getEmail(),
+            employee.getPhone(),
+            employee.getDepartment(),
+            employee.getPosition(),
+            employee.getRole(),
+            employee.getEmploymentStatus()
+    );
+}
+
+
+
+
 }
