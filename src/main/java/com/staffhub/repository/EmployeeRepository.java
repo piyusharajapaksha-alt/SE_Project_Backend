@@ -96,6 +96,39 @@ public int save(Employee employee) {
     );
 }
 
+// Update an existing employee
+public int update(Long id, Employee employee) {
+
+    String sql = """
+            UPDATE employees
+            SET
+                employee_number = ?,
+                first_name = ?,
+                last_name = ?,
+                email = ?,
+                phone = ?,
+                department = ?,
+                position = ?,
+                role = ?,
+                employment_status = ?
+            WHERE id = ?
+            """;
+
+    return jdbcTemplate.update(
+            sql,
+            employee.getEmployeeNumber(),
+            employee.getFirstName(),
+            employee.getLastName(),
+            employee.getEmail(),
+            employee.getPhone(),
+            employee.getDepartment(),
+            employee.getPosition(),
+            employee.getRole(),
+            employee.getEmploymentStatus(),
+            id
+    );
+}
+
 
 
 
