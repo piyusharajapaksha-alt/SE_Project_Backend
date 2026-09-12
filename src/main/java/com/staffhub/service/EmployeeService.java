@@ -25,4 +25,9 @@ public class EmployeeService {
         return employeeRepository.findById(id);
     }
 
+    // Create a new employee
+    public int createEmployee(Employee employee) {
+        return employeeRepository.save(employee);
+    }
+
 }
