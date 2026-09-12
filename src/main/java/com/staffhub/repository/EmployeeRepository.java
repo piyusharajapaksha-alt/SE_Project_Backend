@@ -39,97 +39,100 @@ public class EmployeeRepository {
         });
     }
 
+    // Get one employee by ID
+    public Employee findById(Long id) {
 
-// Get one employee by ID
-public Employee findById(Long id) {
+        String sql = "SELECT * FROM employees WHERE id = ?";
 
-    String sql = "SELECT * FROM employees WHERE id = ?";
+        return jdbcTemplate.queryForObject(sql, (resultSet, rowNumber) -> {
 
-    return jdbcTemplate.queryForObject(sql, (resultSet, rowNumber) -> {
+            Employee employee = new Employee();
 
-        Employee employee = new Employee();
+            employee.setId(resultSet.getLong("id"));
+            employee.setEmployeeNumber(resultSet.getString("employee_number"));
+            employee.setFirstName(resultSet.getString("first_name"));
+            employee.setLastName(resultSet.getString("last_name"));
+            employee.setEmail(resultSet.getString("email"));
+            employee.setPhone(resultSet.getString("phone"));
+            employee.setDepartment(resultSet.getString("department"));
+            employee.setPosition(resultSet.getString("position"));
+            employee.setRole(resultSet.getString("role"));
+            employee.setEmploymentStatus(resultSet.getString("employment_status"));
 
-        employee.setId(resultSet.getLong("id"));
-        employee.setEmployeeNumber(resultSet.getString("employee_number"));
-        employee.setFirstName(resultSet.getString("first_name"));
-        employee.setLastName(resultSet.getString("last_name"));
-        employee.setEmail(resultSet.getString("email"));
-        employee.setPhone(resultSet.getString("phone"));
-        employee.setDepartment(resultSet.getString("department"));
-        employee.setPosition(resultSet.getString("position"));
-        employee.setRole(resultSet.getString("role"));
-        employee.setEmploymentStatus(resultSet.getString("employment_status"));
+            return employee;
+        }, id);
+    }
 
-        return employee;
-    }, id);
- }
+    // Create a new employee
+    public int save(Employee employee) {
 
- // Create a new employee
-public int save(Employee employee) {
+        String sql = """
+                INSERT INTO employees (
+                    employee_number,
+                    first_name,
+                    last_name,
+                    email,
+                    phone,
+                    department,
+                    position,
+                    role,
+                    employment_status
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """;
 
-    String sql = """
-            INSERT INTO employees (
-                employee_number,
-                first_name,
-                last_name,
-                email,
-                phone,
-                department,
-                position,
-                role,
-                employment_status
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """;
+        return jdbcTemplate.update(
+                sql,
+                employee.getEmployeeNumber(),
+                employee.getFirstName(),
+                employee.getLastName(),
+                employee.getEmail(),
+                employee.getPhone(),
+                employee.getDepartment(),
+                employee.getPosition(),
+                employee.getRole(),
+                employee.getEmploymentStatus()
+        );
+    }
 
-    return jdbcTemplate.update(
-            sql,
-            employee.getEmployeeNumber(),
-            employee.getFirstName(),
-            employee.getLastName(),
-            employee.getEmail(),
-            employee.getPhone(),
-            employee.getDepartment(),
-            employee.getPosition(),
-            employee.getRole(),
-            employee.getEmploymentStatus()
-    );
-}
+    // Update an existing employee
+    public int update(Long id, Employee employee) {
 
-// Update an existing employee
-public int update(Long id, Employee employee) {
+        String sql = """
+                UPDATE employees
+                SET
+                    employee_number = ?,
+                    first_name = ?,
+                    last_name = ?,
+                    email = ?,
+                    phone = ?,
+                    department = ?,
+                    position = ?,
+                    role = ?,
+                    employment_status = ?
+                WHERE id = ?
+                """;
 
-    String sql = """
-            UPDATE employees
-            SET
-                employee_number = ?,
-                first_name = ?,
-                last_name = ?,
-                email = ?,
-                phone = ?,
-                department = ?,
-                position = ?,
-                role = ?,
-                employment_status = ?
-            WHERE id = ?
-            """;
+        return jdbcTemplate.update(
+                sql,
+                employee.getEmployeeNumber(),
+                employee.getFirstName(),
+                employee.getLastName(),
+                employee.getEmail(),
+                employee.getPhone(),
+                employee.getDepartment(),
+                employee.getPosition(),
+                employee.getRole(),
+                employee.getEmploymentStatus(),
+                id
+        );
+    }
 
-    return jdbcTemplate.update(
-            sql,
-            employee.getEmployeeNumber(),
-            employee.getFirstName(),
-            employee.getLastName(),
-            employee.getEmail(),
-            employee.getPhone(),
-            employee.getDepartment(),
-            employee.getPosition(),
-            employee.getRole(),
-            employee.getEmploymentStatus(),
-            id
-    );
-}
+    // Delete an employee
+    public int delete(Long id) {
 
+        String sql = "DELETE FROM employees WHERE id = ?";
 
-
-
+        return jdbcTemplate.update(sql, id);
+    }
 }
