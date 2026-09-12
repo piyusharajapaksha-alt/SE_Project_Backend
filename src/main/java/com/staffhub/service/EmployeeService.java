@@ -30,4 +30,9 @@ public class EmployeeService {
         return employeeRepository.save(employee);
     }
 
+    // Update an existing employee
+    public int updateEmployee(Long id, Employee employee) {
+        return employeeRepository.update(id, employee);
+    }
+
 }
