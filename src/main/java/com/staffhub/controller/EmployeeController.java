@@ -10,6 +10,9 @@ import java.util.List;
 
 import org.springframework.web.bind.annotation.PathVariable;
 
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+
 @RestController
 @RequestMapping("/api/employees")
 public class EmployeeController {
@@ -30,6 +33,15 @@ public class EmployeeController {
 @GetMapping("/{id}")
 public Employee getEmployeeById(@PathVariable Long id) {
     return employeeService.getEmployeeById(id);
+}
+
+// Create a new employee
+@PostMapping
+public String createEmployee(@RequestBody Employee employee) {
+
+    employeeService.createEmployee(employee);
+
+    return "Employee created successfully";
 }
 
 }
