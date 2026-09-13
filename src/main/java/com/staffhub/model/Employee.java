@@ -1,5 +1,8 @@
 package com.staffhub.model;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
 public class Employee {
 
     private Long id;
@@ -12,14 +15,31 @@ public class Employee {
     private String position;
     private String role;
     private String employmentStatus;
+    private LocalDate hireDate;
+    private String address;
+    private String emergencyContact;
+    private BigDecimal salary;
+    private String gender;
 
     public Employee() {
     }
 
-    public Employee(Long id, String employeeNumber, String firstName,
-                    String lastName, String email, String phone,
-                    String department, String position, String role,
-                    String employmentStatus) {
+    public Employee(
+            Long id,
+            String employeeNumber,
+            String firstName,
+            String lastName,
+            String email,
+            String phone,
+            String department,
+            String position,
+            String role,
+            String employmentStatus,
+            LocalDate hireDate,
+            String address,
+            String emergencyContact,
+            BigDecimal salary,
+            String gender) {
 
         this.id = id;
         this.employeeNumber = employeeNumber;
@@ -31,6 +51,11 @@ public class Employee {
         this.position = position;
         this.role = role;
         this.employmentStatus = employmentStatus;
+        this.hireDate = hireDate;
+        this.address = address;
+        this.emergencyContact = emergencyContact;
+        this.salary = salary;
+        this.gender = gender;
     }
 
     public Long getId() {
@@ -111,5 +136,45 @@ public class Employee {
 
     public void setEmploymentStatus(String employmentStatus) {
         this.employmentStatus = employmentStatus;
+    }
+
+    public LocalDate getHireDate() {
+        return hireDate;
+    }
+
+    public void setHireDate(LocalDate hireDate) {
+        this.hireDate = hireDate;
+    }
+
+    public String getAddress() {
+        return address;
+    }
+
+    public void setAddress(String address) {
+        this.address = address;
+    }
+
+    public String getEmergencyContact() {
+        return emergencyContact;
+    }
+
+    public void setEmergencyContact(String emergencyContact) {
+        this.emergencyContact = emergencyContact;
+    }
+
+    public BigDecimal getSalary() {
+        return salary;
+    }
+
+    public void setSalary(BigDecimal salary) {
+        this.salary = salary;
+    }
+
+    public String getGender() {
+        return gender;
+    }
+
+    public void setGender(String gender) {
+        this.gender = gender;
     }
 }

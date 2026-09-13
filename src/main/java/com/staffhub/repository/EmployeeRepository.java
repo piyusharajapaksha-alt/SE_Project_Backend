@@ -18,22 +18,62 @@ public class EmployeeRepository {
     // Get all employees
     public List<Employee> findAll() {
 
-        String sql = "SELECT * FROM employees";
+        String sql = "SELECT * FROM employees ORDER BY id";
 
         return jdbcTemplate.query(sql, (resultSet, rowNumber) -> {
 
             Employee employee = new Employee();
 
             employee.setId(resultSet.getLong("id"));
-            employee.setEmployeeNumber(resultSet.getString("employee_number"));
-            employee.setFirstName(resultSet.getString("first_name"));
-            employee.setLastName(resultSet.getString("last_name"));
-            employee.setEmail(resultSet.getString("email"));
-            employee.setPhone(resultSet.getString("phone"));
-            employee.setDepartment(resultSet.getString("department"));
-            employee.setPosition(resultSet.getString("position"));
-            employee.setRole(resultSet.getString("role"));
-            employee.setEmploymentStatus(resultSet.getString("employment_status"));
+            employee.setEmployeeNumber(
+                    resultSet.getString("employee_number")
+            );
+            employee.setFirstName(
+                    resultSet.getString("first_name")
+            );
+            employee.setLastName(
+                    resultSet.getString("last_name")
+            );
+            employee.setEmail(
+                    resultSet.getString("email")
+            );
+            employee.setPhone(
+                    resultSet.getString("phone")
+            );
+            employee.setDepartment(
+                    resultSet.getString("department")
+            );
+            employee.setPosition(
+                    resultSet.getString("position")
+            );
+            employee.setRole(
+                    resultSet.getString("role")
+            );
+            employee.setEmploymentStatus(
+                    resultSet.getString("employment_status")
+            );
+
+            if (resultSet.getDate("hire_date") != null) {
+                employee.setHireDate(
+                        resultSet.getDate("hire_date").toLocalDate()
+                );
+            }
+
+            employee.setAddress(
+                    resultSet.getString("address")
+            );
+
+            employee.setEmergencyContact(
+                    resultSet.getString("emergency_contact")
+            );
+
+            employee.setSalary(
+                    resultSet.getBigDecimal("salary")
+            );
+
+            employee.setGender(
+                    resultSet.getString("gender")
+            );
 
             return employee;
         });
@@ -44,23 +84,67 @@ public class EmployeeRepository {
 
         String sql = "SELECT * FROM employees WHERE id = ?";
 
-        return jdbcTemplate.queryForObject(sql, (resultSet, rowNumber) -> {
+        return jdbcTemplate.queryForObject(
+                sql,
+                (resultSet, rowNumber) -> {
 
-            Employee employee = new Employee();
+                    Employee employee = new Employee();
 
-            employee.setId(resultSet.getLong("id"));
-            employee.setEmployeeNumber(resultSet.getString("employee_number"));
-            employee.setFirstName(resultSet.getString("first_name"));
-            employee.setLastName(resultSet.getString("last_name"));
-            employee.setEmail(resultSet.getString("email"));
-            employee.setPhone(resultSet.getString("phone"));
-            employee.setDepartment(resultSet.getString("department"));
-            employee.setPosition(resultSet.getString("position"));
-            employee.setRole(resultSet.getString("role"));
-            employee.setEmploymentStatus(resultSet.getString("employment_status"));
+                    employee.setId(resultSet.getLong("id"));
+                    employee.setEmployeeNumber(
+                            resultSet.getString("employee_number")
+                    );
+                    employee.setFirstName(
+                            resultSet.getString("first_name")
+                    );
+                    employee.setLastName(
+                            resultSet.getString("last_name")
+                    );
+                    employee.setEmail(
+                            resultSet.getString("email")
+                    );
+                    employee.setPhone(
+                            resultSet.getString("phone")
+                    );
+                    employee.setDepartment(
+                            resultSet.getString("department")
+                    );
+                    employee.setPosition(
+                            resultSet.getString("position")
+                    );
+                    employee.setRole(
+                            resultSet.getString("role")
+                    );
+                    employee.setEmploymentStatus(
+                            resultSet.getString("employment_status")
+                    );
 
-            return employee;
-        }, id);
+                    if (resultSet.getDate("hire_date") != null) {
+                        employee.setHireDate(
+                                resultSet.getDate("hire_date").toLocalDate()
+                        );
+                    }
+
+                    employee.setAddress(
+                            resultSet.getString("address")
+                    );
+
+                    employee.setEmergencyContact(
+                            resultSet.getString("emergency_contact")
+                    );
+
+                    employee.setSalary(
+                            resultSet.getBigDecimal("salary")
+                    );
+
+                    employee.setGender(
+                            resultSet.getString("gender")
+                    );
+
+                    return employee;
+                },
+                id
+        );
     }
 
     // Create a new employee
@@ -76,9 +160,14 @@ public class EmployeeRepository {
                     department,
                     position,
                     role,
-                    employment_status
+                    employment_status,
+                    hire_date,
+                    address,
+                    emergency_contact,
+                    salary,
+                    gender
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
 
         return jdbcTemplate.update(
@@ -91,7 +180,12 @@ public class EmployeeRepository {
                 employee.getDepartment(),
                 employee.getPosition(),
                 employee.getRole(),
-                employee.getEmploymentStatus()
+                employee.getEmploymentStatus(),
+                employee.getHireDate(),
+                employee.getAddress(),
+                employee.getEmergencyContact(),
+                employee.getSalary(),
+                employee.getGender()
         );
     }
 
@@ -109,7 +203,12 @@ public class EmployeeRepository {
                     department = ?,
                     position = ?,
                     role = ?,
-                    employment_status = ?
+                    employment_status = ?,
+                    hire_date = ?,
+                    address = ?,
+                    emergency_contact = ?,
+                    salary = ?,
+                    gender = ?
                 WHERE id = ?
                 """;
 
@@ -124,6 +223,11 @@ public class EmployeeRepository {
                 employee.getPosition(),
                 employee.getRole(),
                 employee.getEmploymentStatus(),
+                employee.getHireDate(),
+                employee.getAddress(),
+                employee.getEmergencyContact(),
+                employee.getSalary(),
+                employee.getGender(),
                 id
         );
     }
