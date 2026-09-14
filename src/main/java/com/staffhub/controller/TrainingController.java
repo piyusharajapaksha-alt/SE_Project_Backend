@@ -42,4 +42,17 @@ public class TrainingController {
 
         return trainingService.getTrainingProgramById(id);
     }
+
+
+    // ============================================================
+    // POST /api/training
+    // ============================================================
+
+    @PostMapping
+    public TrainingProgram createTrainingProgram(
+            @RequestBody TrainingProgram training
+    ) {
+
+        return trainingService.createTrainingProgram(training);
+    }
 }
