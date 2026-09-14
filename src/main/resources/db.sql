@@ -55,3 +55,50 @@ CREATE TABLE training_programs (
             'Cancelled'
         ))
 );
+
+CREATE TABLE IF NOT EXISTS grievances (
+    id BIGSERIAL PRIMARY KEY,
+
+    employee_id VARCHAR(50) NOT NULL,
+
+    category VARCHAR(100) NOT NULL,
+
+    priority VARCHAR(30) NOT NULL DEFAULT 'Medium',
+
+    description TEXT NOT NULL,
+
+    status VARCHAR(30) NOT NULL DEFAULT 'New',
+
+    assigned_to VARCHAR(50),
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_grievance_employee
+        FOREIGN KEY (employee_id)
+        REFERENCES employees(employee_number)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS grievance_responses (
+    id BIGSERIAL PRIMARY KEY,
+
+    grievance_id BIGINT NOT NULL,
+
+    employee_id VARCHAR(50) NOT NULL,
+
+    response_text TEXT NOT NULL,
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_response_grievance
+        FOREIGN KEY (grievance_id)
+        REFERENCES grievances(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_response_employee
+        FOREIGN KEY (employee_id)
+        REFERENCES employees(employee_number)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE
+);
