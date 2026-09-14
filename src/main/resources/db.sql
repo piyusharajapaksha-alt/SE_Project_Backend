@@ -22,3 +22,34 @@ CREATE TABLE employees (
 
     gender VARCHAR(20)
 );
+
+
+
+-- ============================================================
+-- TRAINING MANAGEMENT
+-- ============================================================
+
+CREATE TABLE training_programs (
+    id BIGSERIAL PRIMARY KEY,
+
+    title VARCHAR(200) NOT NULL,
+    description TEXT,
+
+    trainer VARCHAR(150) NOT NULL,
+    category VARCHAR(100) NOT NULL,
+
+    start_date DATE NOT NULL,
+    end_date DATE,
+
+    location VARCHAR(200) NOT NULL,
+
+    capacity INTEGER NOT NULL CHECK (capacity > 0),
+
+    status VARCHAR(30) NOT NULL
+        CHECK (status IN (
+            'Upcoming',
+            'Ongoing',
+            'Completed',
+            'Cancelled'
+        ))
+);
