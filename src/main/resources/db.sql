@@ -102,3 +102,67 @@ CREATE TABLE IF NOT EXISTS grievance_responses (
         ON UPDATE CASCADE
         ON DELETE CASCADE
 );
+
+
+-- ============================================================
+-- PERFORMANCE MANAGEMENT
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS performance_reviews (
+    id BIGSERIAL PRIMARY KEY,
+
+    employee_id VARCHAR(50) NOT NULL,
+
+    review_period VARCHAR(7) NOT NULL,
+
+    quality_of_work INTEGER NOT NULL
+        CHECK (quality_of_work BETWEEN 1 AND 5),
+
+    productivity INTEGER NOT NULL
+        CHECK (productivity BETWEEN 1 AND 5),
+
+    teamwork INTEGER NOT NULL
+        CHECK (teamwork BETWEEN 1 AND 5),
+
+    communication INTEGER NOT NULL
+        CHECK (communication BETWEEN 1 AND 5),
+
+    responsibility INTEGER NOT NULL
+        CHECK (responsibility BETWEEN 1 AND 5),
+
+    problem_solving INTEGER NOT NULL
+        CHECK (problem_solving BETWEEN 1 AND 5),
+
+    overall_rating NUMERIC(3,2) NOT NULL
+        CHECK (overall_rating BETWEEN 1 AND 5),
+
+    manager_feedback TEXT,
+
+    areas_for_improvement TEXT,
+
+    status VARCHAR(30) NOT NULL DEFAULT 'Pending Review'
+        CHECK (
+            status IN (
+                'Pending Review',
+                'Completed'
+            )
+        ),
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_performance_employee
+        FOREIGN KEY (employee_id)
+        REFERENCES employees(employee_number)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE,
+
+    CONSTRAINT unique_employee_review_period
+        UNIQUE (employee_id, review_period),
+
+    CONSTRAINT valid_review_period
+        CHECK (
+            review_period ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'
+        )
+);
