@@ -53,6 +53,25 @@ public class TrainingController {
             @RequestBody TrainingProgram training
     ) {
 
-        return trainingService.createTrainingProgram(training);
+        return trainingService.createTrainingProgram(
+                training
+        );
+    }
+
+
+    // ============================================================
+    // PUT /api/training/{id}
+    // ============================================================
+
+    @PutMapping("/{id}")
+    public TrainingProgram updateTrainingProgram(
+            @PathVariable Long id,
+            @RequestBody TrainingProgram training
+    ) {
+
+        return trainingService.updateTrainingProgram(
+                id,
+                training
+        );
     }
 }

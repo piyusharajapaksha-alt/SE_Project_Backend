@@ -53,6 +53,24 @@ public class TrainingService {
 
 
     // ============================================================
+    // Update training program
+    // ============================================================
+
+    public TrainingProgram updateTrainingProgram(
+            Long id,
+            TrainingProgram training
+    ) {
+
+        validateTraining(training);
+
+        return trainingRepository.update(
+                id,
+                training
+        );
+    }
+
+
+    // ============================================================
     // Validation
     // ============================================================
 
@@ -119,6 +137,19 @@ public class TrainingService {
 
             throw new IllegalArgumentException(
                     "Capacity must be greater than 0"
+            );
+        }
+
+
+        // ========================================================
+        // Training For validation
+        // ========================================================
+
+        if (training.getTrainingFor() == null ||
+                training.getTrainingFor().isEmpty()) {
+
+            throw new IllegalArgumentException(
+                    "At least one department must be selected"
             );
         }
 

@@ -1,6 +1,8 @@
 package com.staffhub.model;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 public class TrainingProgram {
 
@@ -18,6 +20,8 @@ public class TrainingProgram {
     private String location;
 
     private Integer capacity;
+
+    private List<String> trainingFor = new ArrayList<>();
 
     private String status;
 
@@ -104,6 +108,15 @@ public class TrainingProgram {
 
     public void setCapacity(Integer capacity) {
         this.capacity = capacity;
+    }
+
+
+    public List<String> getTrainingFor() {
+        return trainingFor;
+    }
+
+    public void setTrainingFor(List<String> trainingFor) {
+        this.trainingFor = trainingFor;
     }
 
 

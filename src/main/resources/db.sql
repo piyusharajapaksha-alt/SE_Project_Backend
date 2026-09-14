@@ -45,6 +45,8 @@ CREATE TABLE training_programs (
 
     capacity INTEGER NOT NULL CHECK (capacity > 0),
 
+    training_for TEXT[] NOT NULL DEFAULT '{}',
+
     status VARCHAR(30) NOT NULL
         CHECK (status IN (
             'Upcoming',
