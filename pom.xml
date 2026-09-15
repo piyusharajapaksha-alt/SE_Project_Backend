@@ -21,6 +21,7 @@
 
     <properties>
         <java.version>21</java.version>
+        <mssql-jdbc.version>13.4.0.jre11</mssql-jdbc.version>
     </properties>
 
     <dependencies>
@@ -56,10 +57,11 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- Microsoft SQL Server JDBC Driver -->
+        <!-- Microsoft SQL Server JDBC Driver 13.4.0 -->
         <dependency>
             <groupId>com.microsoft.sqlserver</groupId>
             <artifactId>mssql-jdbc</artifactId>
+            <version>${mssql-jdbc.version}</version>
             <scope>runtime</scope>
         </dependency>
 

@@ -1,5 +1,6 @@
 package com.staffhub.repository;
 
+import com.staffhub.model.Employee;
 import com.staffhub.model.Performance;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -16,7 +17,7 @@ public class PerformanceRepository {
     }
 
     // ============================================================
-    // GET ALL
+    // GET ALL PERFORMANCE REVIEWS
     // ============================================================
 
     public List<Performance> findAll() {
@@ -47,7 +48,7 @@ public class PerformanceRepository {
     }
 
     // ============================================================
-    // GET BY ID
+    // GET PERFORMANCE REVIEW BY ID
     // ============================================================
 
     public Performance findById(Long id) {
@@ -85,7 +86,7 @@ public class PerformanceRepository {
     }
 
     // ============================================================
-    // GET BY EMPLOYEE
+    // GET REVIEWS BY EMPLOYEE
     // ============================================================
 
     public List<Performance> findByEmployeeId(String employeeId) {
@@ -118,14 +119,14 @@ public class PerformanceRepository {
     }
 
     // ============================================================
-    // GET AVAILABLE EMPLOYEES FOR REVIEW
+    // GET EMPLOYEES AVAILABLE FOR A PERFORMANCE REVIEW
     //
-    // Returns employees who:
-    // 1. Match the selected department, if supplied.
-    // 2. Do NOT already have a review for the selected month.
+    // Employee must:
+    // 1. Match selected department if department is provided.
+    // 2. NOT already have a review for the selected month.
     // ============================================================
 
-    public List<com.staffhub.model.Employee> findEmployeesAvailableForReview(
+    public List<Employee> findEmployeesAvailableForReview(
             String reviewPeriod,
             String department
     ) {
@@ -171,8 +172,7 @@ public class PerformanceRepository {
                 sql,
                 (resultSet, rowNumber) -> {
 
-                    com.staffhub.model.Employee employee =
-                            new com.staffhub.model.Employee();
+                    Employee employee = new Employee();
 
                     employee.setId(
                             resultSet.getLong("id")
@@ -249,25 +249,36 @@ public class PerformanceRepository {
 
     // ============================================================
     // CHECK EMPLOYEE EXISTS
+    //
+    // PostgreSQL:
+    // SELECT EXISTS (...)
+    //
+    // SQL Server:
+    // SELECT CASE WHEN EXISTS (...) THEN 1 ELSE 0 END
     // ============================================================
 
     public boolean employeeExists(String employeeId) {
 
         String sql = """
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM employees
-                    WHERE employee_number = ?
-                )
+                SELECT
+                    CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM employees
+                            WHERE employee_number = ?
+                        )
+                        THEN 1
+                        ELSE 0
+                    END
                 """;
 
-        Boolean exists = jdbcTemplate.queryForObject(
+        Integer exists = jdbcTemplate.queryForObject(
                 sql,
-                Boolean.class,
+                Integer.class,
                 employeeId
         );
 
-        return Boolean.TRUE.equals(exists);
+        return exists != null && exists == 1;
     }
 
     // ============================================================
@@ -280,22 +291,27 @@ public class PerformanceRepository {
     ) {
 
         String sql = """
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM performance_reviews
-                    WHERE employee_id = ?
-                    AND review_period = ?
-                )
+                SELECT
+                    CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM performance_reviews
+                            WHERE employee_id = ?
+                            AND review_period = ?
+                        )
+                        THEN 1
+                        ELSE 0
+                    END
                 """;
 
-        Boolean exists = jdbcTemplate.queryForObject(
+        Integer exists = jdbcTemplate.queryForObject(
                 sql,
-                Boolean.class,
+                Integer.class,
                 employeeId,
                 reviewPeriod
         );
 
-        return Boolean.TRUE.equals(exists);
+        return exists != null && exists == 1;
     }
 
     // ============================================================
@@ -309,28 +325,39 @@ public class PerformanceRepository {
     ) {
 
         String sql = """
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM performance_reviews
-                    WHERE employee_id = ?
-                    AND review_period = ?
-                    AND id <> ?
-                )
+                SELECT
+                    CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM performance_reviews
+                            WHERE employee_id = ?
+                            AND review_period = ?
+                            AND id <> ?
+                        )
+                        THEN 1
+                        ELSE 0
+                    END
                 """;
 
-        Boolean exists = jdbcTemplate.queryForObject(
+        Integer exists = jdbcTemplate.queryForObject(
                 sql,
-                Boolean.class,
+                Integer.class,
                 employeeId,
                 reviewPeriod,
                 id
         );
 
-        return Boolean.TRUE.equals(exists);
+        return exists != null && exists == 1;
     }
 
     // ============================================================
-    // CREATE
+    // CREATE PERFORMANCE REVIEW
+    //
+    // PostgreSQL used:
+    // INSERT ... RETURNING id
+    //
+    // SQL Server uses:
+    // INSERT ... OUTPUT INSERTED.id
     // ============================================================
 
     public Performance create(Performance performance) {
@@ -350,8 +377,8 @@ public class PerformanceRepository {
                     areas_for_improvement,
                     status
                 )
+                OUTPUT INSERTED.id
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                RETURNING id
                 """;
 
         Long generatedId = jdbcTemplate.queryForObject(
@@ -377,7 +404,7 @@ public class PerformanceRepository {
     }
 
     // ============================================================
-    // UPDATE
+    // UPDATE PERFORMANCE REVIEW
     // ============================================================
 
     public Performance update(
@@ -400,7 +427,7 @@ public class PerformanceRepository {
                     manager_feedback = ?,
                     areas_for_improvement = ?,
                     status = ?,
-                    updated_at = CURRENT_TIMESTAMP
+                    updated_at = SYSDATETIME()
                 WHERE id = ?
                 """;
 
@@ -433,7 +460,7 @@ public class PerformanceRepository {
     }
 
     // ============================================================
-    // DELETE
+    // DELETE PERFORMANCE REVIEW
     // ============================================================
 
     public void delete(Long id) {
@@ -520,4 +547,3 @@ public class PerformanceRepository {
         return performance;
     }
 }
-
