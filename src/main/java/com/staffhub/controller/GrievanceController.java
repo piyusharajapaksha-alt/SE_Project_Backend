@@ -16,16 +16,40 @@ public class GrievanceController {
     public GrievanceController(
             GrievanceService grievanceService
     ) {
-        this.grievanceService = grievanceService;
+        this.grievanceService =
+                grievanceService;
     }
+
+    // ============================================================
+    // GET ALL GRIEVANCES
+    // ============================================================
 
     @GetMapping
     public List<Grievance> getAll(
-            @RequestParam(required = false) String employeeId,
-            @RequestParam(required = false) String search,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) String priority,
-            @RequestParam(required = false) String category
+            @RequestParam(
+                    required = false
+            )
+            String employeeId,
+
+            @RequestParam(
+                    required = false
+            )
+            String search,
+
+            @RequestParam(
+                    required = false
+            )
+            String status,
+
+            @RequestParam(
+                    required = false
+            )
+            String priority,
+
+            @RequestParam(
+                    required = false
+            )
+            String category
     ) {
 
         return grievanceService.getAll(
@@ -37,21 +61,81 @@ public class GrievanceController {
         );
     }
 
+    // ============================================================
+    // GET ONE
+    // ============================================================
+
     @GetMapping("/{id}")
     public Grievance getById(
             @PathVariable Long id
     ) {
 
-        return grievanceService.getById(id);
+        return grievanceService.getById(
+                id
+        );
     }
+
+    // ============================================================
+    // CREATE
+    // ============================================================
 
     @PostMapping
     public Long create(
             @RequestBody Grievance grievance
     ) {
 
-        return grievanceService.create(grievance);
+        return grievanceService.create(
+                grievance
+        );
     }
+
+    // ============================================================
+    // UPDATE OWN GRIEVANCE
+    //
+    // employeeId comes from the logged-in employee in the
+    // current StaffHub authentication architecture.
+    //
+    // The service/repository additionally verifies that the
+    // grievance belongs to that employee and is still New.
+    // ============================================================
+
+    @PutMapping("/{id}")
+    public String updateOwnGrievance(
+            @PathVariable Long id,
+            @RequestBody Grievance grievance,
+            @RequestParam String employeeId
+    ) {
+
+        grievanceService.updateOwnGrievance(
+                id,
+                employeeId,
+                grievance
+        );
+
+        return "Grievance updated successfully";
+    }
+
+    // ============================================================
+    // DELETE OWN GRIEVANCE
+    // ============================================================
+
+    @DeleteMapping("/{id}")
+    public String deleteOwnGrievance(
+            @PathVariable Long id,
+            @RequestParam String employeeId
+    ) {
+
+        grievanceService.deleteOwnGrievance(
+                id,
+                employeeId
+        );
+
+        return "Grievance deleted successfully";
+    }
+
+    // ============================================================
+    // ADD RESPONSE
+    // ============================================================
 
     @PostMapping("/{id}/responses")
     public String addResponse(
@@ -67,6 +151,10 @@ public class GrievanceController {
 
         return "Response added successfully";
     }
+
+    // ============================================================
+    // UPDATE STATUS
+    // ============================================================
 
     @PutMapping("/{id}/status")
     public String updateStatus(

@@ -1,5 +1,22 @@
+/* ============================================================
+   STAFFHUB - SQL SERVER DATABASE
+   Converted from PostgreSQL
+   SQL Server / SSMS version
+   ============================================================ */
+
+CREATE DATABASE StaffHub;
+GO
+
+USE StaffHub;
+GO
+
+
+/* ============================================================
+   EMPLOYEES
+   ============================================================ */
+
 CREATE TABLE employees (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
 
     employee_number VARCHAR(50) NOT NULL UNIQUE,
 
@@ -16,24 +33,24 @@ CREATE TABLE employees (
     employment_status VARCHAR(30),
 
     hire_date DATE,
-    address TEXT,
+    address VARCHAR(MAX),
     emergency_contact VARCHAR(100),
-    salary NUMERIC(12, 2),
+    salary DECIMAL(12,2),
 
     gender VARCHAR(20)
 );
+GO
 
 
-
--- ============================================================
--- TRAINING MANAGEMENT
--- ============================================================
+/* ============================================================
+   TRAINING MANAGEMENT
+   ============================================================ */
 
 CREATE TABLE training_programs (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
 
     title VARCHAR(200) NOT NULL,
-    description TEXT,
+    description VARCHAR(MAX),
 
     trainer VARCHAR(150) NOT NULL,
     category VARCHAR(100) NOT NULL,
@@ -43,211 +60,25 @@ CREATE TABLE training_programs (
 
     location VARCHAR(200) NOT NULL,
 
-    capacity INTEGER NOT NULL CHECK (capacity > 0),
+    capacity INT NOT NULL,
 
-    training_for TEXT[] NOT NULL DEFAULT '{}',
+    /*
+        PostgreSQL TEXT[] converted to JSON text.
 
-    status VARCHAR(30) NOT NULL
-        CHECK (status IN (
-            'Upcoming',
-            'Ongoing',
-            'Completed',
-            'Cancelled'
-        ))
-);
+        Example:
+        ["Engineering"]
+        ["Engineering","Human Resources"]
+        ["Engineering","Human Resources","IT"]
+    */
+    training_for VARCHAR(MAX) NOT NULL
+        CONSTRAINT df_training_for DEFAULT '[]',
 
-CREATE TABLE IF NOT EXISTS grievances (
-    id BIGSERIAL PRIMARY KEY,
+    status VARCHAR(30) NOT NULL,
 
-    employee_id VARCHAR(50) NOT NULL,
-
-    category VARCHAR(100) NOT NULL,
-
-    priority VARCHAR(30) NOT NULL DEFAULT 'Medium',
-
-    description TEXT NOT NULL,
-
-    status VARCHAR(30) NOT NULL DEFAULT 'New',
-
-    assigned_to VARCHAR(50),
-
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_grievance_employee
-        FOREIGN KEY (employee_id)
-        REFERENCES employees(employee_number)
-        ON UPDATE CASCADE
-        ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS grievance_responses (
-    id BIGSERIAL PRIMARY KEY,
-
-    grievance_id BIGINT NOT NULL,
-
-    employee_id VARCHAR(50) NOT NULL,
-
-    response_text TEXT NOT NULL,
-
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_response_grievance
-        FOREIGN KEY (grievance_id)
-        REFERENCES grievances(id)
-        ON DELETE CASCADE,
-
-    CONSTRAINT fk_response_employee
-        FOREIGN KEY (employee_id)
-        REFERENCES employees(employee_number)
-        ON UPDATE CASCADE
-        ON DELETE CASCADE
-);
-
-
--- ============================================================
--- PERFORMANCE MANAGEMENT
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS performance_reviews (
-    id BIGSERIAL PRIMARY KEY,
-
-    employee_id VARCHAR(50) NOT NULL,
-
-    review_period VARCHAR(7) NOT NULL,
-
-    quality_of_work INTEGER NOT NULL
-        CHECK (quality_of_work BETWEEN 1 AND 5),
-
-    productivity INTEGER NOT NULL
-        CHECK (productivity BETWEEN 1 AND 5),
-
-    teamwork INTEGER NOT NULL
-        CHECK (teamwork BETWEEN 1 AND 5),
-
-    communication INTEGER NOT NULL
-        CHECK (communication BETWEEN 1 AND 5),
-
-    responsibility INTEGER NOT NULL
-        CHECK (responsibility BETWEEN 1 AND 5),
-
-    problem_solving INTEGER NOT NULL
-        CHECK (problem_solving BETWEEN 1 AND 5),
-
-    overall_rating NUMERIC(3,2) NOT NULL
-        CHECK (overall_rating BETWEEN 1 AND 5),
-
-    manager_feedback TEXT,
-
-    areas_for_improvement TEXT,
-
-    status VARCHAR(30) NOT NULL DEFAULT 'Pending Review'
-        CHECK (
-            status IN (
-                'Pending Review',
-                'Completed'
-            )
-        ),
-
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_performance_employee
-        FOREIGN KEY (employee_id)
-        REFERENCES employees(employee_number)
-        ON UPDATE CASCADE
-        ON DELETE CASCADE,
-
-    CONSTRAINT unique_employee_review_period
-        UNIQUE (employee_id, review_period),
-
-    CONSTRAINT valid_review_period
-        CHECK (
-            review_period ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'
-        )
-);
-
-
--- ============================================================
--- LEAVE MANAGEMENT
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS leave_requests (
-    id BIGSERIAL PRIMARY KEY,
-
-    employee_id VARCHAR(50) NOT NULL,
-
-    leave_type VARCHAR(50) NOT NULL,
-
-    start_date DATE NOT NULL,
-
-    end_date DATE NOT NULL,
-
-    reason TEXT NOT NULL,
-
-    approver_id VARCHAR(50),
-
-    status VARCHAR(30) NOT NULL DEFAULT 'Pending',
-
-    comment TEXT,
-
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_leave_employee
-        FOREIGN KEY (employee_id)
-        REFERENCES employees(employee_number)
-        ON UPDATE CASCADE
-        ON DELETE CASCADE,
-
-    CONSTRAINT fk_leave_approver
-        FOREIGN KEY (approver_id)
-        REFERENCES employees(employee_number)
-        ON UPDATE CASCADE
-        ON DELETE SET NULL,
-
-    CONSTRAINT valid_leave_dates
-        CHECK (end_date >= start_date),
-
-    CONSTRAINT valid_leave_status
-        CHECK (
-            status IN (
-                'Pending',
-                'Approved',
-                'Rejected',
-                'Cancelled'
-            )
-        )
-);
-
--- ============================================================
--- EVENT MANAGEMENT
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS events (
-    id BIGSERIAL PRIMARY KEY,
-
-    title VARCHAR(200) NOT NULL,
-
-    description TEXT,
-
-    organizer_id VARCHAR(50) NOT NULL,
-
-    category VARCHAR(100) NOT NULL,
-
-    event_date DATE NOT NULL,
-
-    start_time TIME NOT NULL,
-
-    end_time TIME NOT NULL,
-
-    location VARCHAR(200) NOT NULL,
-
-    capacity INTEGER NOT NULL
+    CONSTRAINT chk_training_capacity
         CHECK (capacity > 0),
 
-    status VARCHAR(30) NOT NULL DEFAULT 'Upcoming'
+    CONSTRAINT chk_training_status
         CHECK (
             status IN (
                 'Upcoming',
@@ -257,33 +88,299 @@ CREATE TABLE IF NOT EXISTS events (
             )
         ),
 
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_training_for_json
+        CHECK (ISJSON(training_for) = 1)
+);
+GO
 
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+/* ============================================================
+   GRIEVANCES
+   ============================================================ */
+
+CREATE TABLE grievances (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+
+    employee_id VARCHAR(50) NOT NULL,
+
+    category VARCHAR(100) NOT NULL,
+
+    priority VARCHAR(30) NOT NULL
+        CONSTRAINT df_grievance_priority DEFAULT 'Medium',
+
+    description VARCHAR(MAX) NOT NULL,
+
+    status VARCHAR(30) NOT NULL
+        CONSTRAINT df_grievance_status DEFAULT 'New',
+
+    assigned_to VARCHAR(50),
+
+    created_at DATETIME2 NOT NULL
+        CONSTRAINT df_grievance_created_at DEFAULT SYSDATETIME(),
+
+    CONSTRAINT fk_grievance_employee
+        FOREIGN KEY (employee_id)
+        REFERENCES employees(employee_number)
+);
+GO
+
+
+/* ============================================================
+   GRIEVANCE RESPONSES
+   ============================================================ */
+
+CREATE TABLE grievance_responses (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+
+    grievance_id BIGINT NOT NULL,
+
+    employee_id VARCHAR(50) NOT NULL,
+
+    response_text VARCHAR(MAX) NOT NULL,
+
+    created_at DATETIME2 NOT NULL
+        CONSTRAINT df_grievance_response_created_at
+        DEFAULT SYSDATETIME(),
+
+    CONSTRAINT fk_response_grievance
+        FOREIGN KEY (grievance_id)
+        REFERENCES grievances(id)
+        ON DELETE CASCADE,
+
+    /*
+        No ON DELETE CASCADE here because SQL Server can
+        detect multiple cascade paths through grievances.
+    */
+    CONSTRAINT fk_response_employee
+        FOREIGN KEY (employee_id)
+        REFERENCES employees(employee_number)
+);
+GO
+
+
+/* ============================================================
+   PERFORMANCE MANAGEMENT
+   ============================================================ */
+
+CREATE TABLE performance_reviews (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+
+    employee_id VARCHAR(50) NOT NULL,
+
+    review_period VARCHAR(7) NOT NULL,
+
+    quality_of_work INT NOT NULL,
+    productivity INT NOT NULL,
+    teamwork INT NOT NULL,
+    communication INT NOT NULL,
+    responsibility INT NOT NULL,
+    problem_solving INT NOT NULL,
+
+    overall_rating DECIMAL(3,2) NOT NULL,
+
+    manager_feedback VARCHAR(MAX),
+
+    areas_for_improvement VARCHAR(MAX),
+
+    status VARCHAR(30) NOT NULL
+        CONSTRAINT df_performance_status
+        DEFAULT 'Pending Review',
+
+    created_at DATETIME2 NOT NULL
+        CONSTRAINT df_performance_created_at
+        DEFAULT SYSDATETIME(),
+
+    updated_at DATETIME2 NOT NULL
+        CONSTRAINT df_performance_updated_at
+        DEFAULT SYSDATETIME(),
+
+    CONSTRAINT fk_performance_employee
+        FOREIGN KEY (employee_id)
+        REFERENCES employees(employee_number),
+
+    CONSTRAINT unique_employee_review_period
+        UNIQUE (employee_id, review_period),
+
+    CONSTRAINT chk_quality_of_work
+        CHECK (quality_of_work BETWEEN 1 AND 5),
+
+    CONSTRAINT chk_productivity
+        CHECK (productivity BETWEEN 1 AND 5),
+
+    CONSTRAINT chk_teamwork
+        CHECK (teamwork BETWEEN 1 AND 5),
+
+    CONSTRAINT chk_communication
+        CHECK (communication BETWEEN 1 AND 5),
+
+    CONSTRAINT chk_responsibility
+        CHECK (responsibility BETWEEN 1 AND 5),
+
+    CONSTRAINT chk_problem_solving
+        CHECK (problem_solving BETWEEN 1 AND 5),
+
+    CONSTRAINT chk_overall_rating
+        CHECK (overall_rating BETWEEN 1 AND 5),
+
+    CONSTRAINT chk_performance_status
+        CHECK (
+            status IN (
+                'Pending Review',
+                'Completed'
+            )
+        ),
+
+    /*
+        PostgreSQL regex validation converted to SQL Server.
+        Valid examples:
+        2026-01
+        2026-09
+        2026-12
+    */
+    CONSTRAINT chk_review_period
+        CHECK (
+            review_period LIKE
+                '[0-9][0-9][0-9][0-9]-[0-9][0-9]'
+            AND
+            TRY_CONVERT(
+                DATE,
+                review_period + '-01'
+            ) IS NOT NULL
+        )
+);
+GO
+
+
+/* ============================================================
+   LEAVE MANAGEMENT
+   ============================================================ */
+
+CREATE TABLE leave_requests (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+
+    employee_id VARCHAR(50) NOT NULL,
+
+    leave_type VARCHAR(50) NOT NULL,
+
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+
+    reason VARCHAR(MAX) NOT NULL,
+
+    approver_id VARCHAR(50),
+
+    status VARCHAR(30) NOT NULL
+        CONSTRAINT df_leave_status
+        DEFAULT 'Pending',
+
+    comment VARCHAR(MAX),
+
+    created_at DATETIME2 NOT NULL
+        CONSTRAINT df_leave_created_at
+        DEFAULT SYSDATETIME(),
+
+    updated_at DATETIME2 NOT NULL
+        CONSTRAINT df_leave_updated_at
+        DEFAULT SYSDATETIME(),
+
+    CONSTRAINT fk_leave_employee
+        FOREIGN KEY (employee_id)
+        REFERENCES employees(employee_number),
+
+    CONSTRAINT fk_leave_approver
+        FOREIGN KEY (approver_id)
+        REFERENCES employees(employee_number)
+        ON DELETE SET NULL,
+
+    CONSTRAINT chk_leave_dates
+        CHECK (end_date >= start_date),
+
+    CONSTRAINT chk_leave_status
+        CHECK (
+            status IN (
+                'Pending',
+                'Approved',
+                'Rejected',
+                'Cancelled'
+            )
+        )
+);
+GO
+
+
+/* ============================================================
+   EVENT MANAGEMENT
+   ============================================================ */
+
+CREATE TABLE events (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+
+    title VARCHAR(200) NOT NULL,
+
+    description VARCHAR(MAX),
+
+    organizer_id VARCHAR(50) NOT NULL,
+
+    category VARCHAR(100) NOT NULL,
+
+    event_date DATE NOT NULL,
+
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+
+    location VARCHAR(200) NOT NULL,
+
+    capacity INT NOT NULL,
+
+    status VARCHAR(30) NOT NULL
+        CONSTRAINT df_event_status
+        DEFAULT 'Upcoming',
+
+    created_at DATETIME2 NOT NULL
+        CONSTRAINT df_event_created_at
+        DEFAULT SYSDATETIME(),
+
+    updated_at DATETIME2 NOT NULL
+        CONSTRAINT df_event_updated_at
+        DEFAULT SYSDATETIME(),
 
     CONSTRAINT fk_event_organizer
         FOREIGN KEY (organizer_id)
-        REFERENCES employees(employee_number)
-        ON UPDATE CASCADE
-        ON DELETE RESTRICT,
+        REFERENCES employees(employee_number),
 
-    CONSTRAINT valid_event_times
+    CONSTRAINT chk_event_capacity
+        CHECK (capacity > 0),
+
+    CONSTRAINT chk_event_status
+        CHECK (
+            status IN (
+                'Upcoming',
+                'Ongoing',
+                'Completed',
+                'Cancelled'
+            )
+        ),
+
+    CONSTRAINT chk_event_times
         CHECK (end_time > start_time)
 );
+GO
 
 
--- ============================================================
--- EVENT REGISTRATIONS
--- ============================================================
+/* ============================================================
+   EVENT REGISTRATIONS
+   ============================================================ */
 
-CREATE TABLE IF NOT EXISTS event_registrations (
-    id BIGSERIAL PRIMARY KEY,
+CREATE TABLE event_registrations (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
 
     event_id BIGINT NOT NULL,
 
     employee_id VARCHAR(50) NOT NULL,
 
-    registered_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    registered_at DATETIME2 NOT NULL
+        CONSTRAINT df_event_registration_created_at
+        DEFAULT SYSDATETIME(),
 
     CONSTRAINT fk_event_registration_event
         FOREIGN KEY (event_id)
@@ -292,48 +389,28 @@ CREATE TABLE IF NOT EXISTS event_registrations (
 
     CONSTRAINT fk_event_registration_employee
         FOREIGN KEY (employee_id)
-        REFERENCES employees(employee_number)
-        ON UPDATE CASCADE
-        ON DELETE CASCADE,
+        REFERENCES employees(employee_number),
 
     CONSTRAINT unique_event_employee
         UNIQUE (event_id, employee_id)
 );
+GO
 
 
--- ============================================================
--- INDEXES
--- ============================================================
+/* ============================================================
+   TRAINING EMPLOYEE ASSIGNMENTS
+   ============================================================ */
 
-CREATE INDEX IF NOT EXISTS idx_events_date
-    ON events(event_date);
-
-CREATE INDEX IF NOT EXISTS idx_events_status
-    ON events(status);
-
-CREATE INDEX IF NOT EXISTS idx_events_category
-    ON events(category);
-
-CREATE INDEX IF NOT EXISTS idx_event_registrations_event
-    ON event_registrations(event_id);
-
-CREATE INDEX IF NOT EXISTS idx_event_registrations_employee
-    ON event_registrations(employee_id);
-
-
-    -- ============================================================
--- TRAINING EMPLOYEE ASSIGNMENTS
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS training_assignments (
-    id BIGSERIAL PRIMARY KEY,
+CREATE TABLE training_assignments (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
 
     training_id BIGINT NOT NULL,
 
     employee_id VARCHAR(50) NOT NULL,
 
-    assigned_at TIMESTAMP NOT NULL
-        DEFAULT CURRENT_TIMESTAMP,
+    assigned_at DATETIME2 NOT NULL
+        CONSTRAINT df_training_assignment_created_at
+        DEFAULT SYSDATETIME(),
 
     CONSTRAINT fk_training_assignment_training
         FOREIGN KEY (training_id)
@@ -342,31 +419,28 @@ CREATE TABLE IF NOT EXISTS training_assignments (
 
     CONSTRAINT fk_training_assignment_employee
         FOREIGN KEY (employee_id)
-        REFERENCES employees(employee_number)
-        ON UPDATE CASCADE
-        ON DELETE CASCADE,
+        REFERENCES employees(employee_number),
 
     CONSTRAINT unique_training_employee_assignment
-        UNIQUE (
-            training_id,
-            employee_id
-        )
+        UNIQUE (training_id, employee_id)
 );
+GO
 
 
--- ============================================================
--- TRAINING REGISTRATIONS
--- ============================================================
+/* ============================================================
+   TRAINING REGISTRATIONS
+   ============================================================ */
 
-CREATE TABLE IF NOT EXISTS training_registrations (
-    id BIGSERIAL PRIMARY KEY,
+CREATE TABLE training_registrations (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
 
     training_id BIGINT NOT NULL,
 
     employee_id VARCHAR(50) NOT NULL,
 
-    registered_at TIMESTAMP NOT NULL
-        DEFAULT CURRENT_TIMESTAMP,
+    registered_at DATETIME2 NOT NULL
+        CONSTRAINT df_training_registration_created_at
+        DEFAULT SYSDATETIME(),
 
     CONSTRAINT fk_training_registration_training
         FOREIGN KEY (training_id)
@@ -375,33 +449,32 @@ CREATE TABLE IF NOT EXISTS training_registrations (
 
     CONSTRAINT fk_training_registration_employee
         FOREIGN KEY (employee_id)
-        REFERENCES employees(employee_number)
-        ON UPDATE CASCADE
-        ON DELETE CASCADE,
+        REFERENCES employees(employee_number),
 
     CONSTRAINT unique_training_employee_registration
-        UNIQUE (
-            training_id,
-            employee_id
-        )
+        UNIQUE (training_id, employee_id)
 );
+GO
 
 
--- ============================================================
--- TRAINING ATTENDANCE
--- ============================================================
+/* ============================================================
+   TRAINING ATTENDANCE
+   ============================================================ */
 
-CREATE TABLE IF NOT EXISTS training_attendance (
-    id BIGSERIAL PRIMARY KEY,
+CREATE TABLE training_attendance (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
 
     training_id BIGINT NOT NULL,
 
     employee_id VARCHAR(50) NOT NULL,
 
-    status VARCHAR(30) NOT NULL DEFAULT 'Pending',
+    status VARCHAR(30) NOT NULL
+        CONSTRAINT df_training_attendance_status
+        DEFAULT 'Pending',
 
-    marked_at TIMESTAMP NOT NULL
-        DEFAULT CURRENT_TIMESTAMP,
+    marked_at DATETIME2 NOT NULL
+        CONSTRAINT df_training_attendance_marked_at
+        DEFAULT SYSDATETIME(),
 
     CONSTRAINT fk_training_attendance_training
         FOREIGN KEY (training_id)
@@ -410,11 +483,9 @@ CREATE TABLE IF NOT EXISTS training_attendance (
 
     CONSTRAINT fk_training_attendance_employee
         FOREIGN KEY (employee_id)
-        REFERENCES employees(employee_number)
-        ON UPDATE CASCADE
-        ON DELETE CASCADE,
+        REFERENCES employees(employee_number),
 
-    CONSTRAINT valid_training_attendance_status
+    CONSTRAINT chk_training_attendance_status
         CHECK (
             status IN (
                 'Present',
@@ -424,27 +495,27 @@ CREATE TABLE IF NOT EXISTS training_attendance (
         ),
 
     CONSTRAINT unique_training_employee_attendance
-        UNIQUE (
-            training_id,
-            employee_id
-        )
+        UNIQUE (training_id, employee_id)
 );
+GO
 
 
--- ============================================================
--- TRAINING COMPLETION
--- ============================================================
+/* ============================================================
+   TRAINING COMPLETION
+   ============================================================ */
 
-CREATE TABLE IF NOT EXISTS training_completion (
-    id BIGSERIAL PRIMARY KEY,
+CREATE TABLE training_completion (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
 
     training_id BIGINT NOT NULL,
 
     employee_id VARCHAR(50) NOT NULL,
 
-    status VARCHAR(30) NOT NULL DEFAULT 'Pending',
+    status VARCHAR(30) NOT NULL
+        CONSTRAINT df_training_completion_status
+        DEFAULT 'Pending',
 
-    completed_at TIMESTAMP,
+    completed_at DATETIME2,
 
     CONSTRAINT fk_training_completion_training
         FOREIGN KEY (training_id)
@@ -453,11 +524,9 @@ CREATE TABLE IF NOT EXISTS training_completion (
 
     CONSTRAINT fk_training_completion_employee
         FOREIGN KEY (employee_id)
-        REFERENCES employees(employee_number)
-        ON UPDATE CASCADE
-        ON DELETE CASCADE,
+        REFERENCES employees(employee_number),
 
-    CONSTRAINT valid_training_completion_status
+    CONSTRAINT chk_training_completion_status
         CHECK (
             status IN (
                 'Completed',
@@ -467,31 +536,72 @@ CREATE TABLE IF NOT EXISTS training_completion (
         ),
 
     CONSTRAINT unique_training_employee_completion
-        UNIQUE (
-            training_id,
-            employee_id
-        )
+        UNIQUE (training_id, employee_id)
 );
+GO
 
 
--- ============================================================
--- TRAINING INDEXES
--- ============================================================
+/* ============================================================
+   EVENT INDEXES
+   ============================================================ */
 
-CREATE INDEX IF NOT EXISTS idx_training_assignments_training
+CREATE INDEX idx_events_date
+    ON events(event_date);
+GO
+
+CREATE INDEX idx_events_status
+    ON events(status);
+GO
+
+CREATE INDEX idx_events_category
+    ON events(category);
+GO
+
+CREATE INDEX idx_event_registrations_event
+    ON event_registrations(event_id);
+GO
+
+CREATE INDEX idx_event_registrations_employee
+    ON event_registrations(employee_id);
+GO
+
+
+/* ============================================================
+   TRAINING INDEXES
+   ============================================================ */
+
+CREATE INDEX idx_training_assignments_training
     ON training_assignments(training_id);
+GO
 
-CREATE INDEX IF NOT EXISTS idx_training_assignments_employee
+CREATE INDEX idx_training_assignments_employee
     ON training_assignments(employee_id);
+GO
 
-CREATE INDEX IF NOT EXISTS idx_training_registrations_training
+CREATE INDEX idx_training_registrations_training
     ON training_registrations(training_id);
+GO
 
-CREATE INDEX IF NOT EXISTS idx_training_registrations_employee
+CREATE INDEX idx_training_registrations_employee
     ON training_registrations(employee_id);
+GO
 
-CREATE INDEX IF NOT EXISTS idx_training_attendance_training
+CREATE INDEX idx_training_attendance_training
     ON training_attendance(training_id);
+GO
 
-CREATE INDEX IF NOT EXISTS idx_training_completion_training
+CREATE INDEX idx_training_completion_training
     ON training_completion(training_id);
+GO
+
+
+/* ============================================================
+   VERIFICATION
+   ============================================================ */
+
+SELECT
+    TABLE_NAME
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_TYPE = 'BASE TABLE'
+ORDER BY TABLE_NAME;
+GO
