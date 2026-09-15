@@ -14,12 +14,15 @@ public class LeaveService {
 
     private final LeaveRepository leaveRepository;
 
-    public LeaveService(LeaveRepository leaveRepository) {
-        this.leaveRepository = leaveRepository;
+    public LeaveService(
+            LeaveRepository leaveRepository
+    ) {
+        this.leaveRepository =
+                leaveRepository;
     }
 
     // ============================================================
-    // GET ALL
+    // GET ALL LEAVE REQUESTS
     // ============================================================
 
     public List<Leave> getAllLeaves(
@@ -38,15 +41,17 @@ public class LeaveService {
     }
 
     // ============================================================
-    // GET BY ID
+    // GET SINGLE LEAVE
     // ============================================================
 
-    public Leave getLeaveById(Long id) {
+    public Leave getLeaveById(
+            Long id
+    ) {
 
-        Leave leave = leaveRepository.findById(id);
+        Leave leave =
+                leaveRepository.findById(id);
 
         if (leave == null) {
-
             throw new IllegalArgumentException(
                     "Leave request not found"
             );
@@ -56,28 +61,40 @@ public class LeaveService {
     }
 
     // ============================================================
-    // CREATE
+    // CREATE LEAVE
     // ============================================================
 
-    public Leave createLeave(Leave leave) {
+    public Leave createLeave(
+            Leave leave
+    ) {
 
         validateLeave(leave);
 
         String employeeId =
                 leave.getEmployeeId().trim();
 
-        if (!leaveRepository.employeeExists(employeeId)) {
+        // Make sure the employee really exists.
+        if (!leaveRepository.employeeExists(
+                employeeId
+        )) {
 
             throw new IllegalArgumentException(
-                    "Employee not found: " + employeeId
+                    "Employee not found: "
+                            + employeeId
             );
         }
 
-        leave.setEmployeeId(employeeId);
+        leave.setEmployeeId(
+                employeeId
+        );
 
-        leave.setStatus("Pending");
+        leave.setStatus(
+                "Pending"
+        );
 
-        return leaveRepository.create(leave);
+        return leaveRepository.create(
+                leave
+        );
     }
 
     // ============================================================
@@ -107,7 +124,10 @@ public class LeaveService {
             String comment
     ) {
 
-        if (comment == null || comment.isBlank()) {
+        if (
+                comment == null
+                        || comment.isBlank()
+        ) {
 
             throw new IllegalArgumentException(
                     "A rejection comment is required"
@@ -125,9 +145,13 @@ public class LeaveService {
     // CANCEL
     // ============================================================
 
-    public Leave cancelLeave(Long id) {
+    public Leave cancelLeave(
+            Long id
+    ) {
 
-        return leaveRepository.cancel(id);
+        return leaveRepository.cancel(
+                id
+        );
     }
 
     // ============================================================
@@ -138,24 +162,31 @@ public class LeaveService {
             String employeeId
     ) {
 
-        if (employeeId == null
-                || employeeId.isBlank()) {
+        if (
+                employeeId == null
+                        || employeeId.isBlank()
+        ) {
 
             throw new IllegalArgumentException(
                     "Employee ID is required"
             );
         }
 
-        employeeId = employeeId.trim();
+        employeeId =
+                employeeId.trim();
 
-        if (!leaveRepository.employeeExists(employeeId)) {
+        if (!leaveRepository.employeeExists(
+                employeeId
+        )) {
 
             throw new IllegalArgumentException(
-                    "Employee not found: " + employeeId
+                    "Employee not found: "
+                            + employeeId
             );
         }
 
-        int year = LocalDate.now().getYear();
+        int year =
+                LocalDate.now().getYear();
 
         long annualUsed =
                 leaveRepository.getApprovedLeaveDays(
@@ -178,7 +209,7 @@ public class LeaveService {
                         year
                 );
 
-        // StaffHub yearly allocation
+        // StaffHub yearly allocation.
         int annualTotal = 14;
         int sickTotal = 7;
         int personalTotal = 5;
@@ -217,7 +248,9 @@ public class LeaveService {
     // VALIDATION
     // ============================================================
 
-    private void validateLeave(Leave leave) {
+    private void validateLeave(
+            Leave leave
+    ) {
 
         if (leave == null) {
 
@@ -226,16 +259,20 @@ public class LeaveService {
             );
         }
 
-        if (leave.getEmployeeId() == null
-                || leave.getEmployeeId().isBlank()) {
+        if (
+                leave.getEmployeeId() == null
+                        || leave.getEmployeeId().isBlank()
+        ) {
 
             throw new IllegalArgumentException(
                     "Employee ID is required"
             );
         }
 
-        if (leave.getType() == null
-                || leave.getType().isBlank()) {
+        if (
+                leave.getType() == null
+                        || leave.getType().isBlank()
+        ) {
 
             throw new IllegalArgumentException(
                     "Leave type is required"
@@ -245,41 +282,59 @@ public class LeaveService {
         String type =
                 leave.getType().trim();
 
-        if (!type.equals("Annual Leave")
-                && !type.equals("Sick Leave")
-                && !type.equals("Personal Leave")) {
+        // Frontend contains all six types,
+        // therefore backend must accept all six.
+        if (
+                !type.equals("Annual Leave")
+                        && !type.equals("Sick Leave")
+                        && !type.equals("Personal Leave")
+                        && !type.equals("Maternity Leave")
+                        && !type.equals("Paternity Leave")
+                        && !type.equals("Unpaid Leave")
+        ) {
 
             throw new IllegalArgumentException(
-                    "Invalid leave type: " + type
+                    "Invalid leave type: "
+                            + type
             );
         }
 
         leave.setType(type);
 
-        if (leave.getStartDate() == null) {
+        if (
+                leave.getStartDate() == null
+        ) {
 
             throw new IllegalArgumentException(
                     "Start date is required"
             );
         }
 
-        if (leave.getEndDate() == null) {
+        if (
+                leave.getEndDate() == null
+        ) {
 
             throw new IllegalArgumentException(
                     "End date is required"
             );
         }
 
-        if (leave.getEndDate()
-                .isBefore(leave.getStartDate())) {
+        if (
+                leave.getEndDate()
+                        .isBefore(
+                                leave.getStartDate()
+                        )
+        ) {
 
             throw new IllegalArgumentException(
                     "End date cannot be before start date"
             );
         }
 
-        if (leave.getReason() == null
-                || leave.getReason().isBlank()) {
+        if (
+                leave.getReason() == null
+                        || leave.getReason().isBlank()
+        ) {
 
             throw new IllegalArgumentException(
                     "Reason is required"
@@ -304,11 +359,25 @@ public class LeaveService {
                 new HashMap<>();
 
         long remaining =
-                Math.max(0, total - used);
+                Math.max(
+                        0,
+                        total - used
+                );
 
-        balance.put("total", total);
-        balance.put("used", used);
-        balance.put("remaining", remaining);
+        balance.put(
+                "total",
+                total
+        );
+
+        balance.put(
+                "used",
+                used
+        );
+
+        balance.put(
+                "remaining",
+                remaining
+        );
 
         return balance;
     }
