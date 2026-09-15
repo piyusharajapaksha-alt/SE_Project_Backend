@@ -3,8 +3,10 @@ package com.staffhub.service;
 import com.staffhub.model.TrainingProgram;
 import com.staffhub.repository.TrainingRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class TrainingService {
@@ -19,7 +21,7 @@ public class TrainingService {
 
 
     // ============================================================
-    // Get all training programs
+    // GET ALL
     // ============================================================
 
     public List<TrainingProgram> getAllTrainingPrograms() {
@@ -29,17 +31,19 @@ public class TrainingService {
 
 
     // ============================================================
-    // Get one training program
+    // GET ONE
     // ============================================================
 
-    public TrainingProgram getTrainingProgramById(Long id) {
+    public TrainingProgram getTrainingProgramById(
+            Long id
+    ) {
 
         return trainingRepository.findById(id);
     }
 
 
     // ============================================================
-    // Create training program
+    // CREATE
     // ============================================================
 
     public TrainingProgram createTrainingProgram(
@@ -53,7 +57,7 @@ public class TrainingService {
 
 
     // ============================================================
-    // Update training program
+    // UPDATE
     // ============================================================
 
     public TrainingProgram updateTrainingProgram(
@@ -63,6 +67,29 @@ public class TrainingService {
 
         validateTraining(training);
 
+        TrainingProgram existing =
+                trainingRepository.findById(id);
+
+        if (existing == null) {
+            throw new IllegalArgumentException(
+                    "Training program not found"
+            );
+        }
+
+        /*
+         * Do not allow capacity to become lower than
+         * the current number of registrations.
+         */
+        int registeredCount =
+                trainingRepository.countRegistrations(id);
+
+        if (training.getCapacity() < registeredCount) {
+
+            throw new IllegalArgumentException(
+                    "Capacity cannot be lower than the current number of registered employees"
+            );
+        }
+
         return trainingRepository.update(
                 id,
                 training
@@ -71,12 +98,247 @@ public class TrainingService {
 
 
     // ============================================================
-    // Validation
+    // DELETE
+    // ============================================================
+
+    @Transactional
+    public void deleteTrainingProgram(
+            Long id
+    ) {
+
+        TrainingProgram existing =
+                trainingRepository.findById(id);
+
+        if (existing == null) {
+            throw new IllegalArgumentException(
+                    "Training program not found"
+            );
+        }
+
+        trainingRepository.delete(id);
+    }
+
+
+    // ============================================================
+    // GET TRAINING EMPLOYEES
+    // ============================================================
+
+    public List<Map<String, Object>> getTrainingEmployees(
+            Long trainingId
+    ) {
+
+        ensureTrainingExists(trainingId);
+
+        return trainingRepository.findTrainingEmployees(
+                trainingId
+        );
+    }
+
+
+    // ============================================================
+    // ASSIGN EMPLOYEES
+    // ============================================================
+
+    @Transactional
+    public void assignEmployees(
+            Long trainingId,
+            List<String> employeeIds
+    ) {
+
+        ensureTrainingExists(trainingId);
+
+        if (employeeIds == null ||
+                employeeIds.isEmpty()) {
+
+            throw new IllegalArgumentException(
+                    "At least one employee must be selected"
+            );
+        }
+
+        for (String employeeId : employeeIds) {
+
+            if (employeeId == null ||
+                    employeeId.trim().isEmpty()) {
+
+                continue;
+            }
+
+            String normalized =
+                    employeeId.trim();
+
+            if (!trainingRepository.employeeExists(
+                    normalized
+            )) {
+
+                throw new IllegalArgumentException(
+                        "Employee not found: " + normalized
+                );
+            }
+
+            /*
+             * INSERT ... ON CONFLICT DO NOTHING
+             * prevents duplicate assignments.
+             */
+            trainingRepository.assignEmployee(
+                    trainingId,
+                    normalized
+            );
+        }
+    }
+
+
+    // ============================================================
+    // REMOVE ASSIGNMENT
+    // ============================================================
+
+    @Transactional
+    public void removeEmployeeAssignment(
+            Long trainingId,
+            String employeeId
+    ) {
+
+        ensureTrainingExists(trainingId);
+
+        if (employeeId == null ||
+                employeeId.trim().isEmpty()) {
+
+            throw new IllegalArgumentException(
+                    "Employee ID is required"
+            );
+        }
+
+        trainingRepository.removeEmployeeAssignment(
+                trainingId,
+                employeeId.trim()
+        );
+    }
+
+
+    // ============================================================
+    // REGISTER EMPLOYEE
+    // ============================================================
+
+    @Transactional
+    public void registerEmployee(
+            Long trainingId,
+            String employeeId
+    ) {
+
+        ensureTrainingExists(trainingId);
+
+        if (employeeId == null ||
+                employeeId.trim().isEmpty()) {
+
+            throw new IllegalArgumentException(
+                    "Employee ID is required"
+            );
+        }
+
+        String normalized =
+                employeeId.trim();
+
+        if (!trainingRepository.employeeExists(
+                normalized
+        )) {
+
+            throw new IllegalArgumentException(
+                    "Employee not found: " + normalized
+            );
+        }
+
+        TrainingProgram training =
+                trainingRepository.findById(
+                        trainingId
+                );
+
+        if ("Cancelled".equals(
+                training.getStatus()
+        )) {
+
+            throw new IllegalArgumentException(
+                    "Cannot register for a cancelled training"
+            );
+        }
+
+        if ("Completed".equals(
+                training.getStatus()
+        )) {
+
+            throw new IllegalArgumentException(
+                    "Cannot register for a completed training"
+            );
+        }
+
+        if (trainingRepository.isEmployeeRegistered(
+                trainingId,
+                normalized
+        )) {
+
+            throw new IllegalArgumentException(
+                    "Employee is already registered for this training"
+            );
+        }
+
+        int registeredCount =
+                trainingRepository.countRegistrations(
+                        trainingId
+                );
+
+        if (registeredCount >= training.getCapacity()) {
+
+            throw new IllegalArgumentException(
+                    "Training capacity is full"
+            );
+        }
+
+        trainingRepository.registerEmployee(
+                trainingId,
+                normalized
+        );
+    }
+
+
+    // ============================================================
+    // UNREGISTER EMPLOYEE
+    // ============================================================
+
+    @Transactional
+    public void unregisterEmployee(
+            Long trainingId,
+            String employeeId
+    ) {
+
+        ensureTrainingExists(trainingId);
+
+        if (employeeId == null ||
+                employeeId.trim().isEmpty()) {
+
+            throw new IllegalArgumentException(
+                    "Employee ID is required"
+            );
+        }
+
+        trainingRepository.unregisterEmployee(
+                trainingId,
+                employeeId.trim()
+        );
+    }
+
+
+    // ============================================================
+    // VALIDATION
     // ============================================================
 
     private void validateTraining(
             TrainingProgram training
     ) {
+
+        if (training == null) {
+            throw new IllegalArgumentException(
+                    "Training data is required"
+            );
+        }
+
 
         if (training.getTitle() == null ||
                 training.getTitle().trim().isEmpty()) {
@@ -141,10 +403,6 @@ public class TrainingService {
         }
 
 
-        // ========================================================
-        // Training For validation
-        // ========================================================
-
         if (training.getTrainingFor() == null ||
                 training.getTrainingFor().isEmpty()) {
 
@@ -170,10 +428,37 @@ public class TrainingService {
                 "Cancelled"
         );
 
-        if (!validStatuses.contains(training.getStatus())) {
+        if (!validStatuses.contains(
+                training.getStatus()
+        )) {
 
             throw new IllegalArgumentException(
                     "Invalid training status"
+            );
+        }
+    }
+
+
+    // ============================================================
+    // EXISTENCE CHECK
+    // ============================================================
+
+    private void ensureTrainingExists(
+            Long id
+    ) {
+
+        if (id == null) {
+            throw new IllegalArgumentException(
+                    "Training ID is required"
+            );
+        }
+
+        TrainingProgram training =
+                trainingRepository.findById(id);
+
+        if (training == null) {
+            throw new IllegalArgumentException(
+                    "Training program not found"
             );
         }
     }

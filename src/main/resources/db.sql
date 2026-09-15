@@ -319,3 +319,179 @@ CREATE INDEX IF NOT EXISTS idx_event_registrations_event
 
 CREATE INDEX IF NOT EXISTS idx_event_registrations_employee
     ON event_registrations(employee_id);
+
+
+    -- ============================================================
+-- TRAINING EMPLOYEE ASSIGNMENTS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS training_assignments (
+    id BIGSERIAL PRIMARY KEY,
+
+    training_id BIGINT NOT NULL,
+
+    employee_id VARCHAR(50) NOT NULL,
+
+    assigned_at TIMESTAMP NOT NULL
+        DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_training_assignment_training
+        FOREIGN KEY (training_id)
+        REFERENCES training_programs(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_training_assignment_employee
+        FOREIGN KEY (employee_id)
+        REFERENCES employees(employee_number)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE,
+
+    CONSTRAINT unique_training_employee_assignment
+        UNIQUE (
+            training_id,
+            employee_id
+        )
+);
+
+
+-- ============================================================
+-- TRAINING REGISTRATIONS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS training_registrations (
+    id BIGSERIAL PRIMARY KEY,
+
+    training_id BIGINT NOT NULL,
+
+    employee_id VARCHAR(50) NOT NULL,
+
+    registered_at TIMESTAMP NOT NULL
+        DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_training_registration_training
+        FOREIGN KEY (training_id)
+        REFERENCES training_programs(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_training_registration_employee
+        FOREIGN KEY (employee_id)
+        REFERENCES employees(employee_number)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE,
+
+    CONSTRAINT unique_training_employee_registration
+        UNIQUE (
+            training_id,
+            employee_id
+        )
+);
+
+
+-- ============================================================
+-- TRAINING ATTENDANCE
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS training_attendance (
+    id BIGSERIAL PRIMARY KEY,
+
+    training_id BIGINT NOT NULL,
+
+    employee_id VARCHAR(50) NOT NULL,
+
+    status VARCHAR(30) NOT NULL DEFAULT 'Pending',
+
+    marked_at TIMESTAMP NOT NULL
+        DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_training_attendance_training
+        FOREIGN KEY (training_id)
+        REFERENCES training_programs(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_training_attendance_employee
+        FOREIGN KEY (employee_id)
+        REFERENCES employees(employee_number)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE,
+
+    CONSTRAINT valid_training_attendance_status
+        CHECK (
+            status IN (
+                'Present',
+                'Absent',
+                'Pending'
+            )
+        ),
+
+    CONSTRAINT unique_training_employee_attendance
+        UNIQUE (
+            training_id,
+            employee_id
+        )
+);
+
+
+-- ============================================================
+-- TRAINING COMPLETION
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS training_completion (
+    id BIGSERIAL PRIMARY KEY,
+
+    training_id BIGINT NOT NULL,
+
+    employee_id VARCHAR(50) NOT NULL,
+
+    status VARCHAR(30) NOT NULL DEFAULT 'Pending',
+
+    completed_at TIMESTAMP,
+
+    CONSTRAINT fk_training_completion_training
+        FOREIGN KEY (training_id)
+        REFERENCES training_programs(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_training_completion_employee
+        FOREIGN KEY (employee_id)
+        REFERENCES employees(employee_number)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE,
+
+    CONSTRAINT valid_training_completion_status
+        CHECK (
+            status IN (
+                'Completed',
+                'Not Completed',
+                'Pending'
+            )
+        ),
+
+    CONSTRAINT unique_training_employee_completion
+        UNIQUE (
+            training_id,
+            employee_id
+        )
+);
+
+
+-- ============================================================
+-- TRAINING INDEXES
+-- ============================================================
+
+CREATE INDEX IF NOT EXISTS idx_training_assignments_training
+    ON training_assignments(training_id);
+
+CREATE INDEX IF NOT EXISTS idx_training_assignments_employee
+    ON training_assignments(employee_id);
+
+CREATE INDEX IF NOT EXISTS idx_training_registrations_training
+    ON training_registrations(training_id);
+
+CREATE INDEX IF NOT EXISTS idx_training_registrations_employee
+    ON training_registrations(employee_id);
+
+CREATE INDEX IF NOT EXISTS idx_training_attendance_training
+    ON training_attendance(training_id);
+
+CREATE INDEX IF NOT EXISTS idx_training_completion_training
+    ON training_completion(training_id);

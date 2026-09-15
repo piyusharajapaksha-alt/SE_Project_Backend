@@ -2,7 +2,9 @@ package com.staffhub.model;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class TrainingProgram {
 
@@ -25,9 +27,37 @@ public class TrainingProgram {
 
     private String status;
 
+    /*
+     * Employee assignment / registration information.
+     *
+     * Employee IDs use employee_number values such as:
+     * EMP001, EMP002, etc.
+     */
+    private List<String> assignedEmployeeIds = new ArrayList<>();
+
+    private List<String> registeredEmployeeIds = new ArrayList<>();
+
+    /*
+     * Training attendance status.
+     *
+     * Example:
+     * EMP001 -> Present
+     * EMP002 -> Absent
+     */
+    private Map<String, String> attendance = new HashMap<>();
+
+    /*
+     * Training completion status.
+     *
+     * Example:
+     * EMP001 -> Completed
+     * EMP002 -> Pending
+     */
+    private Map<String, String> completion = new HashMap<>();
+
 
     // ============================================================
-    // Getters and Setters
+    // Basic getters and setters
     // ============================================================
 
     public Long getId() {
@@ -126,5 +156,77 @@ public class TrainingProgram {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+
+    // ============================================================
+    // Employee assignment
+    // ============================================================
+
+    public List<String> getAssignedEmployeeIds() {
+        return assignedEmployeeIds;
+    }
+
+    public void setAssignedEmployeeIds(
+            List<String> assignedEmployeeIds
+    ) {
+        this.assignedEmployeeIds =
+                assignedEmployeeIds != null
+                        ? assignedEmployeeIds
+                        : new ArrayList<>();
+    }
+
+
+    // ============================================================
+    // Employee registration
+    // ============================================================
+
+    public List<String> getRegisteredEmployeeIds() {
+        return registeredEmployeeIds;
+    }
+
+    public void setRegisteredEmployeeIds(
+            List<String> registeredEmployeeIds
+    ) {
+        this.registeredEmployeeIds =
+                registeredEmployeeIds != null
+                        ? registeredEmployeeIds
+                        : new ArrayList<>();
+    }
+
+
+    // ============================================================
+    // Attendance
+    // ============================================================
+
+    public Map<String, String> getAttendance() {
+        return attendance;
+    }
+
+    public void setAttendance(
+            Map<String, String> attendance
+    ) {
+        this.attendance =
+                attendance != null
+                        ? attendance
+                        : new HashMap<>();
+    }
+
+
+    // ============================================================
+    // Completion
+    // ============================================================
+
+    public Map<String, String> getCompletion() {
+        return completion;
+    }
+
+    public void setCompletion(
+            Map<String, String> completion
+    ) {
+        this.completion =
+                completion != null
+                        ? completion
+                        : new HashMap<>();
     }
 }
