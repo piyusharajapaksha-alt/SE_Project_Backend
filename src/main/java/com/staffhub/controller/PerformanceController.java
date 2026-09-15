@@ -1,5 +1,6 @@
 package com.staffhub.controller;
 
+import com.staffhub.model.Employee;
 import com.staffhub.model.Performance;
 import com.staffhub.service.PerformanceService;
 import org.springframework.web.bind.annotation.*;
@@ -20,17 +21,44 @@ public class PerformanceController {
     }
 
     // ============================================================
-    // GET /api/performance
+    // GET ALL
     // ============================================================
 
     @GetMapping
     public List<Performance> getAllPerformanceReviews() {
 
-        return performanceService.getAllPerformanceReviews();
+        return performanceService
+                .getAllPerformanceReviews();
     }
 
     // ============================================================
-    // GET /api/performance/{id}
+    // GET AVAILABLE EMPLOYEES
+    //
+    // Example:
+    // /api/performance/available-employees
+    //      ?reviewPeriod=2026-09
+    //
+    // Or:
+    // /api/performance/available-employees
+    //      ?reviewPeriod=2026-09
+    //      &department=IT
+    // ============================================================
+
+    @GetMapping("/available-employees")
+    public List<Employee> getEmployeesAvailableForReview(
+            @RequestParam String reviewPeriod,
+            @RequestParam(required = false) String department
+    ) {
+
+        return performanceService
+                .getEmployeesAvailableForReview(
+                        reviewPeriod,
+                        department
+                );
+    }
+
+    // ============================================================
+    // GET BY ID
     // ============================================================
 
     @GetMapping("/{id}")
@@ -38,11 +66,12 @@ public class PerformanceController {
             @PathVariable Long id
     ) {
 
-        return performanceService.getPerformanceReviewById(id);
+        return performanceService
+                .getPerformanceReviewById(id);
     }
 
     // ============================================================
-    // GET /api/performance/employee/{employeeId}
+    // GET BY EMPLOYEE
     // ============================================================
 
     @GetMapping("/employee/{employeeId}")
@@ -50,13 +79,12 @@ public class PerformanceController {
             @PathVariable String employeeId
     ) {
 
-        return performanceService.getPerformanceByEmployee(
-                employeeId
-        );
+        return performanceService
+                .getPerformanceByEmployee(employeeId);
     }
 
     // ============================================================
-    // POST /api/performance
+    // CREATE
     // ============================================================
 
     @PostMapping
@@ -64,13 +92,12 @@ public class PerformanceController {
             @RequestBody Performance performance
     ) {
 
-        return performanceService.createPerformance(
-                performance
-        );
+        return performanceService
+                .createPerformance(performance);
     }
 
     // ============================================================
-    // PUT /api/performance/{id}
+    // UPDATE
     // ============================================================
 
     @PutMapping("/{id}")
@@ -79,14 +106,15 @@ public class PerformanceController {
             @RequestBody Performance performance
     ) {
 
-        return performanceService.updatePerformance(
-                id,
-                performance
-        );
+        return performanceService
+                .updatePerformance(
+                        id,
+                        performance
+                );
     }
 
     // ============================================================
-    // DELETE /api/performance/{id}
+    // DELETE
     // ============================================================
 
     @DeleteMapping("/{id}")
@@ -94,6 +122,8 @@ public class PerformanceController {
             @PathVariable Long id
     ) {
 
-        performanceService.deletePerformance(id);
+        performanceService
+                .deletePerformance(id);
     }
 }
+
