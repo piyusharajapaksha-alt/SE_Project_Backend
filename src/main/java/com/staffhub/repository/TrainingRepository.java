@@ -471,6 +471,111 @@ public class TrainingRepository {
 
 
     // ============================================================
+    // GET EMPLOYEES FOR SELECTED DEPARTMENTS
+    // ============================================================
+
+    public List<String> findEmployeeNumbersByDepartments(
+            List<String> departments
+    ) {
+
+        if (departments == null ||
+                departments.isEmpty()) {
+
+            return new ArrayList<>();
+        }
+
+        String placeholders =
+                String.join(
+                        ",",
+                        java.util.Collections.nCopies(
+                                departments.size(),
+                                "?"
+                        )
+                );
+
+        String sql = """
+                SELECT employee_number
+                FROM employees
+                WHERE department IN (
+                """
+                + placeholders +
+                """
+                )
+                ORDER BY employee_number
+                """;
+
+        return jdbcTemplate.query(
+                sql,
+                departments.toArray(),
+                (resultSet, rowNumber) ->
+                        resultSet.getString(
+                                "employee_number"
+                        )
+        );
+    }
+
+
+    // ============================================================
+    // REMOVE ASSIGNMENTS NOT IN SELECTED DEPARTMENTS
+    // ============================================================
+
+    public void removeAssignmentsOutsideDepartments(
+            Long trainingId,
+            List<String> departments
+    ) {
+
+        if (departments == null ||
+                departments.isEmpty()) {
+
+            jdbcTemplate.update(
+                    """
+                    DELETE FROM training_assignments
+                    WHERE training_id = ?
+                    """,
+                    trainingId
+            );
+
+            return;
+        }
+
+        String placeholders =
+                String.join(
+                        ",",
+                        java.util.Collections.nCopies(
+                                departments.size(),
+                                "?"
+                        )
+                );
+
+        String sql = """
+                DELETE FROM training_assignments
+                WHERE training_id = ?
+                  AND employee_id NOT IN (
+                      SELECT employee_number
+                      FROM employees
+                      WHERE department IN (
+                """
+                + placeholders +
+                """
+                      )
+                  )
+                """;
+
+        List<Object> parameters =
+                new ArrayList<>();
+
+        parameters.add(trainingId);
+
+        parameters.addAll(departments);
+
+        jdbcTemplate.update(
+                sql,
+                parameters.toArray()
+        );
+    }
+
+
+    // ============================================================
     // GET TRAINING EMPLOYEES
     // ============================================================
 
@@ -505,7 +610,10 @@ public class TrainingRepository {
                     ON tr.employee_id = e.employee_number
                    AND tr.training_id = ?
                 WHERE ta.employee_id IS NOT NULL
-                ORDER BY e.first_name ASC, e.last_name ASC
+                ORDER BY
+                    e.department ASC,
+                    e.first_name ASC,
+                    e.last_name ASC
                 """;
 
         return jdbcTemplate.queryForList(
@@ -614,7 +722,9 @@ public class TrainingRepository {
                         ORDER BY employee_id
                         """,
                         (rs, rowNum) ->
-                                rs.getString("employee_id"),
+                                rs.getString(
+                                        "employee_id"
+                                ),
                         trainingId
                 )
         );
@@ -629,7 +739,9 @@ public class TrainingRepository {
                         ORDER BY employee_id
                         """,
                         (rs, rowNum) ->
-                                rs.getString("employee_id"),
+                                rs.getString(
+                                        "employee_id"
+                                ),
                         trainingId
                 )
         );

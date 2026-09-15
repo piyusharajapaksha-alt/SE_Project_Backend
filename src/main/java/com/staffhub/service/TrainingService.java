@@ -5,6 +5,7 @@ import com.staffhub.repository.TrainingRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -46,13 +47,32 @@ public class TrainingService {
     // CREATE
     // ============================================================
 
+    @Transactional
     public TrainingProgram createTrainingProgram(
             TrainingProgram training
     ) {
 
         validateTraining(training);
 
-        return trainingRepository.create(training);
+        TrainingProgram created =
+                trainingRepository.create(training);
+
+        /*
+         * Automatically assign every employee
+         * belonging to the selected departments.
+         */
+        synchronizeDepartmentAssignments(
+                created.getId(),
+                created.getTrainingFor()
+        );
+
+        /*
+         * Reload the training so the response contains
+         * the newly created assignment IDs.
+         */
+        return trainingRepository.findById(
+                created.getId()
+        );
     }
 
 
@@ -60,6 +80,7 @@ public class TrainingService {
     // UPDATE
     // ============================================================
 
+    @Transactional
     public TrainingProgram updateTrainingProgram(
             Long id,
             TrainingProgram training
@@ -71,6 +92,7 @@ public class TrainingService {
                 trainingRepository.findById(id);
 
         if (existing == null) {
+
             throw new IllegalArgumentException(
                     "Training program not found"
             );
@@ -90,10 +112,26 @@ public class TrainingService {
             );
         }
 
-        return trainingRepository.update(
+        TrainingProgram updated =
+                trainingRepository.update(
+                        id,
+                        training
+                );
+
+        /*
+         * Synchronize employee assignments whenever
+         * Training For changes.
+         */
+        synchronizeDepartmentAssignments(
                 id,
-                training
+                updated.getTrainingFor()
         );
+
+        /*
+         * Reload the training so the frontend receives
+         * the final assignment list.
+         */
+        return trainingRepository.findById(id);
     }
 
 
@@ -110,6 +148,7 @@ public class TrainingService {
                 trainingRepository.findById(id);
 
         if (existing == null) {
+
             throw new IllegalArgumentException(
                     "Training program not found"
             );
@@ -326,6 +365,101 @@ public class TrainingService {
 
 
     // ============================================================
+    // SYNCHRONIZE DEPARTMENT ASSIGNMENTS
+    // ============================================================
+
+    private void synchronizeDepartmentAssignments(
+            Long trainingId,
+            List<String> trainingFor
+    ) {
+
+        List<String> departments =
+                normalizeDepartments(trainingFor);
+
+        /*
+         * First remove assignments belonging to
+         * departments that are no longer selected.
+         *
+         * Example:
+         *
+         * Old:
+         * IT + HR
+         *
+         * New:
+         * IT
+         *
+         * HR employees are removed.
+         */
+        trainingRepository.removeAssignmentsOutsideDepartments(
+                trainingId,
+                departments
+        );
+
+        /*
+         * Then get every employee belonging to the
+         * currently selected departments.
+         */
+        List<String> employeeIds =
+                trainingRepository.findEmployeeNumbersByDepartments(
+                        departments
+                );
+
+        /*
+         * Assign all matching employees.
+         *
+         * Duplicate assignments are automatically
+         * ignored by the database.
+         */
+        for (String employeeId : employeeIds) {
+
+            trainingRepository.assignEmployee(
+                    trainingId,
+                    employeeId
+            );
+        }
+    }
+
+
+    // ============================================================
+    // NORMALIZE DEPARTMENTS
+    // ============================================================
+
+    private List<String> normalizeDepartments(
+            List<String> departments
+    ) {
+
+        if (departments == null ||
+                departments.isEmpty()) {
+
+            return new ArrayList<>();
+        }
+
+        List<String> normalized =
+                new ArrayList<>();
+
+        for (String department : departments) {
+
+            if (department == null) {
+                continue;
+            }
+
+            String value =
+                    department.trim();
+
+            if (value.isEmpty()) {
+                continue;
+            }
+
+            if (!normalized.contains(value)) {
+                normalized.add(value);
+            }
+        }
+
+        return normalized;
+    }
+
+
+    // ============================================================
     // VALIDATION
     // ============================================================
 
@@ -334,6 +468,7 @@ public class TrainingService {
     ) {
 
         if (training == null) {
+
             throw new IllegalArgumentException(
                     "Training data is required"
             );
@@ -448,6 +583,7 @@ public class TrainingService {
     ) {
 
         if (id == null) {
+
             throw new IllegalArgumentException(
                     "Training ID is required"
             );
@@ -457,6 +593,7 @@ public class TrainingService {
                 trainingRepository.findById(id);
 
         if (training == null) {
+
             throw new IllegalArgumentException(
                     "Training program not found"
             );

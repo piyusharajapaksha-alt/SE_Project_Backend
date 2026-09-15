@@ -11,9 +11,12 @@ public class PerformanceRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
-    public PerformanceRepository(JdbcTemplate jdbcTemplate) {
+    public PerformanceRepository(
+            JdbcTemplate jdbcTemplate
+    ) {
         this.jdbcTemplate = jdbcTemplate;
     }
+
 
     // ============================================================
     // GET ALL
@@ -42,15 +45,19 @@ public class PerformanceRepository {
 
         return jdbcTemplate.query(
                 sql,
-                (resultSet, rowNumber) -> mapRow(resultSet)
+                (resultSet, rowNumber) ->
+                        mapRow(resultSet)
         );
     }
+
 
     // ============================================================
     // GET BY ID
     // ============================================================
 
-    public Performance findById(Long id) {
+    public Performance findById(
+            Long id
+    ) {
 
         String sql = """
                 SELECT
@@ -71,11 +78,13 @@ public class PerformanceRepository {
                 WHERE id = ?
                 """;
 
-        List<Performance> results = jdbcTemplate.query(
-                sql,
-                (resultSet, rowNumber) -> mapRow(resultSet),
-                id
-        );
+        List<Performance> results =
+                jdbcTemplate.query(
+                        sql,
+                        (resultSet, rowNumber) ->
+                                mapRow(resultSet),
+                        id
+                );
 
         if (results.isEmpty()) {
             return null;
@@ -84,11 +93,14 @@ public class PerformanceRepository {
         return results.get(0);
     }
 
+
     // ============================================================
     // GET BY EMPLOYEE
     // ============================================================
 
-    public List<Performance> findByEmployeeId(String employeeId) {
+    public List<Performance> findByEmployeeId(
+            String employeeId
+    ) {
 
         String sql = """
                 SELECT
@@ -112,16 +124,110 @@ public class PerformanceRepository {
 
         return jdbcTemplate.query(
                 sql,
-                (resultSet, rowNumber) -> mapRow(resultSet),
+                (resultSet, rowNumber) ->
+                        mapRow(resultSet),
                 employeeId
         );
     }
+
+
+    // ============================================================
+    // CHECK EMPLOYEE EXISTS
+    // ============================================================
+
+    public boolean employeeExists(
+            String employeeId
+    ) {
+
+        String sql = """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM employees
+                    WHERE employee_number = ?
+                )
+                """;
+
+        Boolean exists =
+                jdbcTemplate.queryForObject(
+                        sql,
+                        Boolean.class,
+                        employeeId
+                );
+
+        return Boolean.TRUE.equals(exists);
+    }
+
+
+    // ============================================================
+    // CHECK DUPLICATE REVIEW
+    // ============================================================
+
+    public boolean reviewExists(
+            String employeeId,
+            String reviewPeriod
+    ) {
+
+        String sql = """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM performance_reviews
+                    WHERE employee_id = ?
+                      AND review_period = ?
+                )
+                """;
+
+        Boolean exists =
+                jdbcTemplate.queryForObject(
+                        sql,
+                        Boolean.class,
+                        employeeId,
+                        reviewPeriod
+                );
+
+        return Boolean.TRUE.equals(exists);
+    }
+
+
+    // ============================================================
+    // CHECK DUPLICATE REVIEW EXCEPT CURRENT ID
+    // ============================================================
+
+    public boolean reviewExistsExceptId(
+            String employeeId,
+            String reviewPeriod,
+            Long id
+    ) {
+
+        String sql = """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM performance_reviews
+                    WHERE employee_id = ?
+                      AND review_period = ?
+                      AND id <> ?
+                )
+                """;
+
+        Boolean exists =
+                jdbcTemplate.queryForObject(
+                        sql,
+                        Boolean.class,
+                        employeeId,
+                        reviewPeriod,
+                        id
+                );
+
+        return Boolean.TRUE.equals(exists);
+    }
+
 
     // ============================================================
     // CREATE
     // ============================================================
 
-    public Performance create(Performance performance) {
+    public Performance create(
+            Performance performance
+    ) {
 
         String sql = """
                 INSERT INTO performance_reviews (
@@ -142,33 +248,40 @@ public class PerformanceRepository {
                 RETURNING id
                 """;
 
-        Long generatedId = jdbcTemplate.queryForObject(
-                sql,
-                Long.class,
-                performance.getEmployeeId(),
-                performance.getReviewPeriod(),
-                performance.getQualityOfWork(),
-                performance.getProductivity(),
-                performance.getTeamwork(),
-                performance.getCommunication(),
-                performance.getResponsibility(),
-                performance.getProblemSolving(),
-                performance.getOverallRating(),
-                performance.getManagerFeedback(),
-                performance.getAreasForImprovement(),
-                performance.getStatus()
-        );
+        Long generatedId =
+                jdbcTemplate.queryForObject(
+                        sql,
+                        Long.class,
+                        performance.getEmployeeId(),
+                        performance.getReviewPeriod(),
+                        performance.getQualityOfWork(),
+                        performance.getProductivity(),
+                        performance.getTeamwork(),
+                        performance.getCommunication(),
+                        performance.getResponsibility(),
+                        performance.getProblemSolving(),
+                        performance.getOverallRating(),
+                        performance.getManagerFeedback(),
+                        performance.getAreasForImprovement(),
+                        performance.getStatus()
+                );
 
-        performance.setId(generatedId);
+        performance.setId(
+                generatedId
+        );
 
         return performance;
     }
+
 
     // ============================================================
     // UPDATE
     // ============================================================
 
-    public Performance update(Long id, Performance performance) {
+    public Performance update(
+            Long id,
+            Performance performance
+    ) {
 
         String sql = """
                 UPDATE performance_reviews
@@ -184,28 +297,31 @@ public class PerformanceRepository {
                     overall_rating = ?,
                     manager_feedback = ?,
                     areas_for_improvement = ?,
-                    status = ?
+                    status = ?,
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
                 """;
 
-        int rowsUpdated = jdbcTemplate.update(
-                sql,
-                performance.getEmployeeId(),
-                performance.getReviewPeriod(),
-                performance.getQualityOfWork(),
-                performance.getProductivity(),
-                performance.getTeamwork(),
-                performance.getCommunication(),
-                performance.getResponsibility(),
-                performance.getProblemSolving(),
-                performance.getOverallRating(),
-                performance.getManagerFeedback(),
-                performance.getAreasForImprovement(),
-                performance.getStatus(),
-                id
-        );
+        int rowsUpdated =
+                jdbcTemplate.update(
+                        sql,
+                        performance.getEmployeeId(),
+                        performance.getReviewPeriod(),
+                        performance.getQualityOfWork(),
+                        performance.getProductivity(),
+                        performance.getTeamwork(),
+                        performance.getCommunication(),
+                        performance.getResponsibility(),
+                        performance.getProblemSolving(),
+                        performance.getOverallRating(),
+                        performance.getManagerFeedback(),
+                        performance.getAreasForImprovement(),
+                        performance.getStatus(),
+                        id
+                );
 
         if (rowsUpdated == 0) {
+
             throw new IllegalArgumentException(
                     "Performance review not found"
             );
@@ -216,25 +332,34 @@ public class PerformanceRepository {
         return performance;
     }
 
+
     // ============================================================
     // DELETE
     // ============================================================
 
-    public void delete(Long id) {
+    public void delete(
+            Long id
+    ) {
 
         String sql = """
                 DELETE FROM performance_reviews
                 WHERE id = ?
                 """;
 
-        int rowsDeleted = jdbcTemplate.update(sql, id);
+        int rowsDeleted =
+                jdbcTemplate.update(
+                        sql,
+                        id
+                );
 
         if (rowsDeleted == 0) {
+
             throw new IllegalArgumentException(
                     "Performance review not found"
             );
         }
     }
+
 
     // ============================================================
     // RESULT SET MAPPER
@@ -244,7 +369,8 @@ public class PerformanceRepository {
             java.sql.ResultSet resultSet
     ) throws java.sql.SQLException {
 
-        Performance performance = new Performance();
+        Performance performance =
+                new Performance();
 
         performance.setId(
                 resultSet.getLong("id")
@@ -259,43 +385,63 @@ public class PerformanceRepository {
         );
 
         performance.setQualityOfWork(
-                resultSet.getInt("quality_of_work")
+                resultSet.getInt(
+                        "quality_of_work"
+                )
         );
 
         performance.setProductivity(
-                resultSet.getInt("productivity")
+                resultSet.getInt(
+                        "productivity"
+                )
         );
 
         performance.setTeamwork(
-                resultSet.getInt("teamwork")
+                resultSet.getInt(
+                        "teamwork"
+                )
         );
 
         performance.setCommunication(
-                resultSet.getInt("communication")
+                resultSet.getInt(
+                        "communication"
+                )
         );
 
         performance.setResponsibility(
-                resultSet.getInt("responsibility")
+                resultSet.getInt(
+                        "responsibility"
+                )
         );
 
         performance.setProblemSolving(
-                resultSet.getInt("problem_solving")
+                resultSet.getInt(
+                        "problem_solving"
+                )
         );
 
         performance.setOverallRating(
-                resultSet.getDouble("overall_rating")
+                resultSet.getDouble(
+                        "overall_rating"
+                )
         );
 
         performance.setManagerFeedback(
-                resultSet.getString("manager_feedback")
+                resultSet.getString(
+                        "manager_feedback"
+                )
         );
 
         performance.setAreasForImprovement(
-                resultSet.getString("areas_for_improvement")
+                resultSet.getString(
+                        "areas_for_improvement"
+                )
         );
 
         performance.setStatus(
-                resultSet.getString("status")
+                resultSet.getString(
+                        "status"
+                )
         );
 
         return performance;
