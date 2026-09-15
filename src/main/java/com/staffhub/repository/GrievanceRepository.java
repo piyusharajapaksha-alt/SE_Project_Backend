@@ -48,7 +48,7 @@ public class GrievanceRepository {
                         g.status,
                         g.assigned_to,
                         CASE
-                            WHEN a.id IS NOT NULL
+                            WHEN a.employee_number IS NOT NULL
                             THEN CONCAT(
                                 a.first_name,
                                 ' ',
@@ -70,6 +70,10 @@ public class GrievanceRepository {
         List<Object> params =
                 new ArrayList<>();
 
+        // --------------------------------------------------------
+        // Employee filter
+        // --------------------------------------------------------
+
         if (
                 employeeId != null
                         && !employeeId.isBlank()
@@ -79,8 +83,14 @@ public class GrievanceRepository {
                     " AND g.employee_id = ?"
             );
 
-            params.add(employeeId);
+            params.add(
+                    employeeId.trim()
+            );
         }
+
+        // --------------------------------------------------------
+        // Search
+        // --------------------------------------------------------
 
         if (
                 search != null
@@ -89,22 +99,22 @@ public class GrievanceRepository {
 
             sql.append("""
                 AND (
-                    LOWER(g.description)
+                    LOWER(COALESCE(g.description, ''))
                         LIKE LOWER(?)
 
-                    OR LOWER(g.category)
+                    OR LOWER(COALESCE(g.category, ''))
                         LIKE LOWER(?)
 
-                    OR LOWER(e.first_name)
+                    OR LOWER(COALESCE(e.first_name, ''))
                         LIKE LOWER(?)
 
-                    OR LOWER(e.last_name)
+                    OR LOWER(COALESCE(e.last_name, ''))
                         LIKE LOWER(?)
                 )
                 """);
 
             String searchValue =
-                    "%" + search + "%";
+                    "%" + search.trim() + "%";
 
             params.add(searchValue);
             params.add(searchValue);
@@ -112,40 +122,61 @@ public class GrievanceRepository {
             params.add(searchValue);
         }
 
+        // --------------------------------------------------------
+        // Status
+        // --------------------------------------------------------
+
         if (
                 status != null
                         && !status.isBlank()
+                        && !status.equalsIgnoreCase("All")
         ) {
 
             sql.append(
                     " AND g.status = ?"
             );
 
-            params.add(status);
+            params.add(
+                    status.trim()
+            );
         }
+
+        // --------------------------------------------------------
+        // Priority
+        // --------------------------------------------------------
 
         if (
                 priority != null
                         && !priority.isBlank()
+                        && !priority.equalsIgnoreCase("All")
         ) {
 
             sql.append(
                     " AND g.priority = ?"
             );
 
-            params.add(priority);
+            params.add(
+                    priority.trim()
+            );
         }
+
+        // --------------------------------------------------------
+        // Category
+        // --------------------------------------------------------
 
         if (
                 category != null
                         && !category.isBlank()
+                        && !category.equalsIgnoreCase("All")
         ) {
 
             sql.append(
                     " AND g.category = ?"
             );
 
-            params.add(category);
+            params.add(
+                    category.trim()
+            );
         }
 
         sql.append(
@@ -217,6 +248,7 @@ public class GrievanceRepository {
                             );
 
                     if (createdAt != null) {
+
                         grievance.setCreatedAt(
                                 createdAt
                                         .toLocalDateTime()
@@ -252,7 +284,7 @@ public class GrievanceRepository {
                 g.status,
                 g.assigned_to,
                 CASE
-                    WHEN a.id IS NOT NULL
+                    WHEN a.employee_number IS NOT NULL
                     THEN CONCAT(
                         a.first_name,
                         ' ',
@@ -282,9 +314,7 @@ public class GrievanceRepository {
                                         new Grievance();
 
                                 result.setId(
-                                        rs.getLong(
-                                                "id"
-                                        )
+                                        rs.getLong("id")
                                 );
 
                                 result.setEmployeeId(
@@ -341,6 +371,7 @@ public class GrievanceRepository {
                                         );
 
                                 if (createdAt != null) {
+
                                     result.setCreatedAt(
                                             createdAt
                                                     .toLocalDateTime()
@@ -351,6 +382,13 @@ public class GrievanceRepository {
                             },
                             id
                     );
+
+            if (grievance == null) {
+
+                throw new IllegalArgumentException(
+                        "Grievance not found: " + id
+                );
+            }
 
             grievance.setResponses(
                     findResponses(id)
@@ -384,6 +422,7 @@ public class GrievanceRepository {
                 description,
                 status
             )
+            OUTPUT INSERTED.id
             VALUES (
                 ?,
                 ?,
@@ -391,28 +430,30 @@ public class GrievanceRepository {
                 ?,
                 'New'
             )
-            RETURNING id
             """;
 
-        return jdbcTemplate.queryForObject(
-                sql,
-                Long.class,
-                grievance.getEmployeeId(),
-                grievance.getCategory(),
-                grievance.getPriority(),
-                grievance.getDescription()
-        );
+        Long id =
+                jdbcTemplate.queryForObject(
+                        sql,
+                        Long.class,
+                        grievance.getEmployeeId(),
+                        grievance.getCategory(),
+                        grievance.getPriority(),
+                        grievance.getDescription()
+                );
+
+        if (id == null) {
+
+            throw new IllegalStateException(
+                    "Failed to create grievance"
+            );
+        }
+
+        return id;
     }
 
     // ============================================================
     // UPDATE OWN GRIEVANCE
-    //
-    // Only:
-    // employee_id matches
-    // AND status = New
-    //
-    // This prevents changing complaints after HR has started
-    // processing them.
     // ============================================================
 
     public int updateOwnGrievance(
@@ -447,10 +488,6 @@ public class GrievanceRepository {
 
     // ============================================================
     // DELETE OWN GRIEVANCE
-    //
-    // Only:
-    // employee_id matches
-    // AND status = New
     // ============================================================
 
     public int deleteOwnGrievance(
@@ -483,14 +520,12 @@ public class GrievanceRepository {
             String assignedTo
     ) {
 
-        String sql;
-
         if (
                 assignedTo != null
                         && !assignedTo.isBlank()
         ) {
 
-            sql = """
+            String sql = """
                 UPDATE grievances
                 SET
                     status = ?,
@@ -501,12 +536,12 @@ public class GrievanceRepository {
             return jdbcTemplate.update(
                     sql,
                     status,
-                    assignedTo,
+                    assignedTo.trim(),
                     id
             );
         }
 
-        sql = """
+        String sql = """
             UPDATE grievances
             SET
                 status = ?
@@ -536,17 +571,27 @@ public class GrievanceRepository {
                 employee_id,
                 response_text
             )
+            OUTPUT INSERTED.id
             VALUES (?, ?, ?)
-            RETURNING id
             """;
 
-        return jdbcTemplate.queryForObject(
-                sql,
-                Long.class,
-                grievanceId,
-                employeeId,
-                text
-        );
+        Long id =
+                jdbcTemplate.queryForObject(
+                        sql,
+                        Long.class,
+                        grievanceId,
+                        employeeId,
+                        text
+                );
+
+        if (id == null) {
+
+            throw new IllegalStateException(
+                    "Failed to create grievance response"
+            );
+        }
+
+        return id;
     }
 
     // ============================================================
@@ -614,6 +659,7 @@ public class GrievanceRepository {
                             );
 
                     if (createdAt != null) {
+
                         response.setCreatedAt(
                                 createdAt
                                         .toLocalDateTime()
