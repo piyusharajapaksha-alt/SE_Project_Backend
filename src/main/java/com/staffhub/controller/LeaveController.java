@@ -16,29 +16,20 @@ public class LeaveController {
 
     private final LeaveService leaveService;
 
-    public LeaveController(
-            LeaveService leaveService
-    ) {
+    public LeaveController(LeaveService leaveService) {
         this.leaveService = leaveService;
     }
 
     // ============================================================
-    // GET /api/leave
+    // GET ALL LEAVE REQUESTS
     // ============================================================
 
     @GetMapping
     public ResponseEntity<?> getAllLeaves(
-            @RequestParam(required = false)
-            String employeeId,
-
-            @RequestParam(required = false)
-            String search,
-
-            @RequestParam(required = false)
-            String department,
-
-            @RequestParam(required = false)
-            String status
+            @RequestParam(required = false) String employeeId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String department,
+            @RequestParam(required = false) String status
     ) {
 
         try {
@@ -55,16 +46,26 @@ public class LeaveController {
 
         } catch (Exception error) {
 
-            return errorResponse(
-                    HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to load leave requests",
-                    error
-            );
+            error.printStackTrace();
+
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            Map.of(
+                                    "status", 500,
+                                    "error",
+                                    "Internal Server Error",
+                                    "message",
+                                    error.getMessage() == null
+                                            ? "Unknown server error"
+                                            : error.getMessage()
+                            )
+                    );
         }
     }
 
     // ============================================================
-    // GET /api/leave/{id}
+    // GET SINGLE LEAVE REQUEST
     // ============================================================
 
     @GetMapping("/{id}")
@@ -80,24 +81,39 @@ public class LeaveController {
 
         } catch (IllegalArgumentException error) {
 
-            return errorResponse(
-                    HttpStatus.NOT_FOUND,
-                    error.getMessage(),
-                    error
-            );
+            return ResponseEntity
+                    .status(HttpStatus.NOT_FOUND)
+                    .body(
+                            Map.of(
+                                    "status", 404,
+                                    "error", "Not Found",
+                                    "message",
+                                    error.getMessage()
+                            )
+                    );
 
         } catch (Exception error) {
 
-            return errorResponse(
-                    HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to load leave request",
-                    error
-            );
+            error.printStackTrace();
+
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            Map.of(
+                                    "status", 500,
+                                    "error",
+                                    "Internal Server Error",
+                                    "message",
+                                    error.getMessage() == null
+                                            ? "Unknown server error"
+                                            : error.getMessage()
+                            )
+                    );
         }
     }
 
     // ============================================================
-    // GET /api/leave/balance/{employeeId}
+    // GET LEAVE BALANCE
     // ============================================================
 
     @GetMapping("/balance/{employeeId}")
@@ -107,33 +123,47 @@ public class LeaveController {
 
         try {
 
-            Map<String, Object> balance =
+            return ResponseEntity.ok(
                     leaveService.getLeaveBalance(
                             employeeId
-                    );
-
-            return ResponseEntity.ok(balance);
+                    )
+            );
 
         } catch (IllegalArgumentException error) {
 
-            return errorResponse(
-                    HttpStatus.BAD_REQUEST,
-                    error.getMessage(),
-                    error
-            );
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body(
+                            Map.of(
+                                    "status", 400,
+                                    "error", "Bad Request",
+                                    "message",
+                                    error.getMessage()
+                            )
+                    );
 
         } catch (Exception error) {
 
-            return errorResponse(
-                    HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to load leave balance",
-                    error
-            );
+            error.printStackTrace();
+
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            Map.of(
+                                    "status", 500,
+                                    "error",
+                                    "Internal Server Error",
+                                    "message",
+                                    error.getMessage() == null
+                                            ? "Unknown server error"
+                                            : error.getMessage()
+                            )
+                    );
         }
     }
 
     // ============================================================
-    // POST /api/leave
+    // CREATE LEAVE REQUEST
     // ============================================================
 
     @PostMapping
@@ -143,40 +173,53 @@ public class LeaveController {
 
         try {
 
+            Leave created =
+                    leaveService.createLeave(leave);
+
             return ResponseEntity
                     .status(HttpStatus.CREATED)
-                    .body(
-                            leaveService.createLeave(
-                                    leave
-                            )
-                    );
+                    .body(created);
 
         } catch (IllegalArgumentException error) {
 
-            return errorResponse(
-                    HttpStatus.BAD_REQUEST,
-                    error.getMessage(),
-                    error
-            );
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body(
+                            Map.of(
+                                    "status", 400,
+                                    "error", "Bad Request",
+                                    "message",
+                                    error.getMessage()
+                            )
+                    );
 
         } catch (Exception error) {
 
-            return errorResponse(
-                    HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to create leave request",
-                    error
-            );
+            error.printStackTrace();
+
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            Map.of(
+                                    "status", 500,
+                                    "error",
+                                    "Internal Server Error",
+                                    "message",
+                                    error.getMessage() == null
+                                            ? "Unknown server error"
+                                            : error.getMessage()
+                            )
+                    );
         }
     }
 
     // ============================================================
-    // PUT /api/leave/{id}/approve
+    // APPROVE
     // ============================================================
 
     @PutMapping("/{id}/approve")
     public ResponseEntity<?> approveLeave(
             @PathVariable Long id,
-
             @RequestBody(required = false)
             Map<String, String> body
     ) {
@@ -211,30 +254,44 @@ public class LeaveController {
 
         } catch (IllegalArgumentException error) {
 
-            return errorResponse(
-                    HttpStatus.BAD_REQUEST,
-                    error.getMessage(),
-                    error
-            );
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body(
+                            Map.of(
+                                    "status", 400,
+                                    "error", "Bad Request",
+                                    "message",
+                                    error.getMessage()
+                            )
+                    );
 
         } catch (Exception error) {
 
-            return errorResponse(
-                    HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to approve leave request",
-                    error
-            );
+            error.printStackTrace();
+
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            Map.of(
+                                    "status", 500,
+                                    "error",
+                                    "Internal Server Error",
+                                    "message",
+                                    error.getMessage() == null
+                                            ? "Unknown server error"
+                                            : error.getMessage()
+                            )
+                    );
         }
     }
 
     // ============================================================
-    // PUT /api/leave/{id}/reject
+    // REJECT
     // ============================================================
 
     @PutMapping("/{id}/reject")
     public ResponseEntity<?> rejectLeave(
             @PathVariable Long id,
-
             @RequestBody(required = false)
             Map<String, String> body
     ) {
@@ -269,24 +326,38 @@ public class LeaveController {
 
         } catch (IllegalArgumentException error) {
 
-            return errorResponse(
-                    HttpStatus.BAD_REQUEST,
-                    error.getMessage(),
-                    error
-            );
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body(
+                            Map.of(
+                                    "status", 400,
+                                    "error", "Bad Request",
+                                    "message",
+                                    error.getMessage()
+                            )
+                    );
 
         } catch (Exception error) {
 
-            return errorResponse(
-                    HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to reject leave request",
-                    error
-            );
+            error.printStackTrace();
+
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            Map.of(
+                                    "status", 500,
+                                    "error", "Internal Server Error",
+                                    "message",
+                                    error.getMessage() == null
+                                            ? "Unknown server error"
+                                            : error.getMessage()
+                            )
+                    );
         }
     }
 
     // ============================================================
-    // PUT /api/leave/{id}/cancel
+    // CANCEL
     // ============================================================
 
     @PutMapping("/{id}/cancel")
@@ -302,44 +373,33 @@ public class LeaveController {
 
         } catch (IllegalArgumentException error) {
 
-            return errorResponse(
-                    HttpStatus.BAD_REQUEST,
-                    error.getMessage(),
-                    error
-            );
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body(
+                            Map.of(
+                                    "status", 400,
+                                    "error", "Bad Request",
+                                    "message",
+                                    error.getMessage()
+                            )
+                    );
 
         } catch (Exception error) {
 
-            return errorResponse(
-                    HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to cancel leave request",
-                    error
-            );
+            error.printStackTrace();
+
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            Map.of(
+                                    "status", 500,
+                                    "error", "Internal Server Error",
+                                    "message",
+                                    error.getMessage() == null
+                                            ? "Unknown server error"
+                                            : error.getMessage()
+                            )
+                    );
         }
     }
-
-    // ============================================================
-    // ERROR RESPONSE
-    // ============================================================
-
-    private ResponseEntity<Map<String, Object>> errorResponse(
-            HttpStatus status,
-            String message,
-            Exception error
-    ) {
-
-        return ResponseEntity
-                .status(status)
-                .body(
-                        Map.of(
-                                "status", status.value(),
-                                "error", status.getReasonPhrase(),
-                                "message",
-                                message == null
-                                        ? "Unknown error"
-                                        : message
-                        )
-                );
-    }
 }
-

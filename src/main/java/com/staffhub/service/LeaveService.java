@@ -46,6 +46,7 @@ public class LeaveService {
         Leave leave = leaveRepository.findById(id);
 
         if (leave == null) {
+
             throw new IllegalArgumentException(
                     "Leave request not found"
             );
@@ -73,6 +74,7 @@ public class LeaveService {
         }
 
         leave.setEmployeeId(employeeId);
+
         leave.setStatus("Pending");
 
         return leaveRepository.create(leave);
@@ -153,8 +155,7 @@ public class LeaveService {
             );
         }
 
-        int year =
-                LocalDate.now().getYear();
+        int year = LocalDate.now().getYear();
 
         long annualUsed =
                 leaveRepository.getApprovedLeaveDays(
@@ -177,9 +178,7 @@ public class LeaveService {
                         year
                 );
 
-        /*
-         * StaffHub yearly leave allocation.
-         */
+        // StaffHub yearly allocation
         int annualTotal = 14;
         int sickTotal = 7;
         int personalTotal = 5;
@@ -221,6 +220,7 @@ public class LeaveService {
     private void validateLeave(Leave leave) {
 
         if (leave == null) {
+
             throw new IllegalArgumentException(
                     "Leave request is required"
             );
@@ -313,4 +313,3 @@ public class LeaveService {
         return balance;
     }
 }
-

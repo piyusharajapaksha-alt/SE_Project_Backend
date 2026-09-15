@@ -26,7 +26,6 @@ public class Leave {
 
     private String comment;
 
-
     // ============================================================
     // GETTERS / SETTERS
     // ============================================================
@@ -39,7 +38,6 @@ public class Leave {
         this.id = id;
     }
 
-
     public String getEmployeeId() {
         return employeeId;
     }
@@ -47,7 +45,6 @@ public class Leave {
     public void setEmployeeId(String employeeId) {
         this.employeeId = employeeId;
     }
-
 
     public String getEmployeeName() {
         return employeeName;
@@ -57,7 +54,6 @@ public class Leave {
         this.employeeName = employeeName;
     }
 
-
     public String getDepartment() {
         return department;
     }
@@ -65,7 +61,6 @@ public class Leave {
     public void setDepartment(String department) {
         this.department = department;
     }
-
 
     public String getType() {
         return type;
@@ -75,7 +70,6 @@ public class Leave {
         this.type = type;
     }
 
-
     public LocalDate getStartDate() {
         return startDate;
     }
@@ -83,7 +77,6 @@ public class Leave {
     public void setStartDate(LocalDate startDate) {
         this.startDate = startDate;
     }
-
 
     public LocalDate getEndDate() {
         return endDate;
@@ -93,7 +86,6 @@ public class Leave {
         this.endDate = endDate;
     }
 
-
     public String getReason() {
         return reason;
     }
@@ -101,7 +93,6 @@ public class Leave {
     public void setReason(String reason) {
         this.reason = reason;
     }
-
 
     public String getApproverId() {
         return approverId;
@@ -111,7 +102,6 @@ public class Leave {
         this.approverId = approverId;
     }
 
-
     public String getStatus() {
         return status;
     }
@@ -119,7 +109,6 @@ public class Leave {
     public void setStatus(String status) {
         this.status = status;
     }
-
 
     public String getComment() {
         return comment;
