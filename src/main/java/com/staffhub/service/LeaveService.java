@@ -14,11 +14,9 @@ public class LeaveService {
 
     private final LeaveRepository leaveRepository;
 
-
     public LeaveService(LeaveRepository leaveRepository) {
         this.leaveRepository = leaveRepository;
     }
-
 
     // ============================================================
     // GET ALL
@@ -39,7 +37,6 @@ public class LeaveService {
         );
     }
 
-
     // ============================================================
     // GET BY ID
     // ============================================================
@@ -57,7 +54,6 @@ public class LeaveService {
         return leave;
     }
 
-
     // ============================================================
     // CREATE
     // ============================================================
@@ -66,11 +62,21 @@ public class LeaveService {
 
         validateLeave(leave);
 
+        String employeeId =
+                leave.getEmployeeId().trim();
+
+        if (!leaveRepository.employeeExists(employeeId)) {
+
+            throw new IllegalArgumentException(
+                    "Employee not found: " + employeeId
+            );
+        }
+
+        leave.setEmployeeId(employeeId);
         leave.setStatus("Pending");
 
         return leaveRepository.create(leave);
     }
-
 
     // ============================================================
     // APPROVE
@@ -89,7 +95,6 @@ public class LeaveService {
         );
     }
 
-
     // ============================================================
     // REJECT
     // ============================================================
@@ -101,6 +106,7 @@ public class LeaveService {
     ) {
 
         if (comment == null || comment.isBlank()) {
+
             throw new IllegalArgumentException(
                     "A rejection comment is required"
             );
@@ -109,10 +115,9 @@ public class LeaveService {
         return leaveRepository.reject(
                 id,
                 approverId,
-                comment
+                comment.trim()
         );
     }
-
 
     // ============================================================
     // CANCEL
@@ -123,7 +128,6 @@ public class LeaveService {
         return leaveRepository.cancel(id);
     }
 
-
     // ============================================================
     // LEAVE BALANCE
     // ============================================================
@@ -132,7 +136,25 @@ public class LeaveService {
             String employeeId
     ) {
 
-        int year = LocalDate.now().getYear();
+        if (employeeId == null
+                || employeeId.isBlank()) {
+
+            throw new IllegalArgumentException(
+                    "Employee ID is required"
+            );
+        }
+
+        employeeId = employeeId.trim();
+
+        if (!leaveRepository.employeeExists(employeeId)) {
+
+            throw new IllegalArgumentException(
+                    "Employee not found: " + employeeId
+            );
+        }
+
+        int year =
+                LocalDate.now().getYear();
 
         long annualUsed =
                 leaveRepository.getApprovedLeaveDays(
@@ -155,44 +177,54 @@ public class LeaveService {
                         year
                 );
 
-
-        // StaffHub yearly allocation
+        /*
+         * StaffHub yearly leave allocation.
+         */
         int annualTotal = 14;
         int sickTotal = 7;
         int personalTotal = 5;
 
+        Map<String, Object> result =
+                new HashMap<>();
 
-        Map<String, Object> annual = createBalance(
-                annualTotal,
-                annualUsed
+        result.put(
+                "annualLeave",
+                createBalance(
+                        annualTotal,
+                        annualUsed
+                )
         );
 
-        Map<String, Object> sick = createBalance(
-                sickTotal,
-                sickUsed
+        result.put(
+                "sickLeave",
+                createBalance(
+                        sickTotal,
+                        sickUsed
+                )
         );
 
-        Map<String, Object> personal = createBalance(
-                personalTotal,
-                personalUsed
+        result.put(
+                "personalLeave",
+                createBalance(
+                        personalTotal,
+                        personalUsed
+                )
         );
-
-
-        Map<String, Object> result = new HashMap<>();
-
-        result.put("annualLeave", annual);
-        result.put("sickLeave", sick);
-        result.put("personalLeave", personal);
 
         return result;
     }
-
 
     // ============================================================
     // VALIDATION
     // ============================================================
 
     private void validateLeave(Leave leave) {
+
+        if (leave == null) {
+            throw new IllegalArgumentException(
+                    "Leave request is required"
+            );
+        }
 
         if (leave.getEmployeeId() == null
                 || leave.getEmployeeId().isBlank()) {
@@ -202,7 +234,6 @@ public class LeaveService {
             );
         }
 
-
         if (leave.getType() == null
                 || leave.getType().isBlank()) {
 
@@ -211,6 +242,19 @@ public class LeaveService {
             );
         }
 
+        String type =
+                leave.getType().trim();
+
+        if (!type.equals("Annual Leave")
+                && !type.equals("Sick Leave")
+                && !type.equals("Personal Leave")) {
+
+            throw new IllegalArgumentException(
+                    "Invalid leave type: " + type
+            );
+        }
+
+        leave.setType(type);
 
         if (leave.getStartDate() == null) {
 
@@ -219,14 +263,12 @@ public class LeaveService {
             );
         }
 
-
         if (leave.getEndDate() == null) {
 
             throw new IllegalArgumentException(
                     "End date is required"
             );
         }
-
 
         if (leave.getEndDate()
                 .isBefore(leave.getStartDate())) {
@@ -236,7 +278,6 @@ public class LeaveService {
             );
         }
 
-
         if (leave.getReason() == null
                 || leave.getReason().isBlank()) {
 
@@ -244,8 +285,11 @@ public class LeaveService {
                     "Reason is required"
             );
         }
-    }
 
+        leave.setReason(
+                leave.getReason().trim()
+        );
+    }
 
     // ============================================================
     // BALANCE HELPER
@@ -269,3 +313,4 @@ public class LeaveService {
         return balance;
     }
 }
+

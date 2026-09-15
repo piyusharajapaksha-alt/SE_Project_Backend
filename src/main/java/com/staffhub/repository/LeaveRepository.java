@@ -4,6 +4,8 @@ import com.staffhub.model.Leave;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,7 +18,6 @@ public class LeaveRepository {
     public LeaveRepository(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
-
 
     // ============================================================
     // GET ALL / FILTER
@@ -33,7 +34,10 @@ public class LeaveRepository {
                 SELECT
                     l.id,
                     l.employee_id,
-                    CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
+                    COALESCE(
+                        CONCAT(e.first_name, ' ', e.last_name),
+                        l.employee_id
+                    ) AS employee_name,
                     e.department,
                     l.leave_type,
                     l.start_date,
@@ -43,28 +47,32 @@ public class LeaveRepository {
                     l.status,
                     l.comment
                 FROM leave_requests l
-                INNER JOIN employees e
+                LEFT JOIN employees e
                     ON e.employee_number = l.employee_id
                 WHERE 1 = 1
                 """);
 
         List<Object> params = new ArrayList<>();
 
-
-        // Employee-specific records
+        // Employee filter
         if (employeeId != null && !employeeId.isBlank()) {
             sql.append(" AND l.employee_id = ?");
-            params.add(employeeId);
+            params.add(employeeId.trim());
         }
 
-
-        // Search employee
+        // Search filter
         if (search != null && !search.isBlank()) {
+
             sql.append("""
                     AND (
-                        LOWER(e.first_name) LIKE LOWER(?)
-                        OR LOWER(e.last_name) LIKE LOWER(?)
-                        OR LOWER(CONCAT(e.first_name, ' ', e.last_name)) LIKE LOWER(?)
+                        LOWER(COALESCE(e.first_name, '')) LIKE LOWER(?)
+                        OR LOWER(COALESCE(e.last_name, '')) LIKE LOWER(?)
+                        OR LOWER(
+                            COALESCE(
+                                CONCAT(e.first_name, ' ', e.last_name),
+                                ''
+                            )
+                        ) LIKE LOWER(?)
                         OR LOWER(l.employee_id) LIKE LOWER(?)
                     )
                     """);
@@ -77,16 +85,14 @@ public class LeaveRepository {
             params.add(searchValue);
         }
 
-
         // Department filter
         if (department != null
                 && !department.isBlank()
                 && !department.equalsIgnoreCase("All")) {
 
             sql.append(" AND e.department = ?");
-            params.add(department);
+            params.add(department.trim());
         }
-
 
         // Status filter
         if (status != null
@@ -94,9 +100,8 @@ public class LeaveRepository {
                 && !status.equalsIgnoreCase("All")) {
 
             sql.append(" AND l.status = ?");
-            params.add(status);
+            params.add(status.trim());
         }
-
 
         sql.append("""
                 ORDER BY
@@ -104,12 +109,12 @@ public class LeaveRepository {
                         WHEN l.status = 'Pending' THEN 1
                         WHEN l.status = 'Approved' THEN 2
                         WHEN l.status = 'Rejected' THEN 3
-                        ELSE 4
+                        WHEN l.status = 'Cancelled' THEN 4
+                        ELSE 5
                     END,
                     l.start_date DESC,
                     l.id DESC
                 """);
-
 
         return jdbcTemplate.query(
                 sql.toString(),
@@ -117,7 +122,6 @@ public class LeaveRepository {
                 params.toArray()
         );
     }
-
 
     // ============================================================
     // GET BY ID
@@ -129,7 +133,10 @@ public class LeaveRepository {
                 SELECT
                     l.id,
                     l.employee_id,
-                    CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
+                    COALESCE(
+                        CONCAT(e.first_name, ' ', e.last_name),
+                        l.employee_id
+                    ) AS employee_name,
                     e.department,
                     l.leave_type,
                     l.start_date,
@@ -139,7 +146,7 @@ public class LeaveRepository {
                     l.status,
                     l.comment
                 FROM leave_requests l
-                INNER JOIN employees e
+                LEFT JOIN employees e
                     ON e.employee_number = l.employee_id
                 WHERE l.id = ?
                 """;
@@ -150,13 +157,31 @@ public class LeaveRepository {
                 id
         );
 
-        if (results.isEmpty()) {
-            return null;
-        }
-
-        return results.get(0);
+        return results.isEmpty()
+                ? null
+                : results.get(0);
     }
 
+    // ============================================================
+    // CHECK EMPLOYEE
+    // ============================================================
+
+    public boolean employeeExists(String employeeId) {
+
+        String sql = """
+                SELECT COUNT(*)
+                FROM employees
+                WHERE employee_number = ?
+                """;
+
+        Integer count = jdbcTemplate.queryForObject(
+                sql,
+                Integer.class,
+                employeeId
+        );
+
+        return count != null && count > 0;
+    }
 
     // ============================================================
     // CREATE
@@ -194,9 +219,8 @@ public class LeaveRepository {
         leave.setId(generatedId);
         leave.setStatus("Pending");
 
-        return leave;
+        return findById(generatedId);
     }
-
 
     // ============================================================
     // APPROVE
@@ -228,13 +252,12 @@ public class LeaveRepository {
 
         if (updated == 0) {
             throw new IllegalArgumentException(
-                    "Pending leave request not found"
+                    "Leave request does not exist or is no longer pending"
             );
         }
 
         return findById(id);
     }
-
 
     // ============================================================
     // REJECT
@@ -266,13 +289,12 @@ public class LeaveRepository {
 
         if (updated == 0) {
             throw new IllegalArgumentException(
-                    "Pending leave request not found"
+                    "Leave request does not exist or is no longer pending"
             );
         }
 
         return findById(id);
     }
-
 
     // ============================================================
     // CANCEL
@@ -293,13 +315,12 @@ public class LeaveRepository {
 
         if (updated == 0) {
             throw new IllegalArgumentException(
-                    "Pending leave request not found"
+                    "Leave request does not exist or is no longer pending"
             );
         }
 
         return findById(id);
     }
-
 
     // ============================================================
     // LEAVE BALANCE
@@ -312,13 +333,25 @@ public class LeaveRepository {
     ) {
 
         String sql = """
-                SELECT COALESCE(
-                    SUM(
-                        (end_date - start_date) + 1
-                    ),
-                    0
-                )
-                FROM leave_requests
+                SELECT
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN EXTRACT(
+                                    DOW FROM day
+                                ) NOT IN (0, 6)
+                                THEN 1
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    )
+                FROM leave_requests,
+                     generate_series(
+                         start_date,
+                         end_date,
+                         INTERVAL '1 day'
+                     ) AS day
                 WHERE employee_id = ?
                   AND leave_type = ?
                   AND status = 'Approved'
@@ -333,17 +366,17 @@ public class LeaveRepository {
                 year
         );
 
-        return result == null ? 0 : result.longValue();
+        return result == null
+                ? 0
+                : result.longValue();
     }
-
 
     // ============================================================
     // RESULT MAPPER
     // ============================================================
 
-    private Leave mapRow(
-            java.sql.ResultSet resultSet
-    ) throws java.sql.SQLException {
+    private Leave mapRow(ResultSet resultSet)
+            throws SQLException {
 
         Leave leave = new Leave();
 
@@ -367,18 +400,21 @@ public class LeaveRepository {
                 resultSet.getString("leave_type")
         );
 
-        LocalDate startDate =
-                resultSet.getDate("start_date") != null
-                        ? resultSet.getDate("start_date").toLocalDate()
-                        : null;
+        if (resultSet.getDate("start_date") != null) {
+            leave.setStartDate(
+                    resultSet
+                            .getDate("start_date")
+                            .toLocalDate()
+            );
+        }
 
-        LocalDate endDate =
-                resultSet.getDate("end_date") != null
-                        ? resultSet.getDate("end_date").toLocalDate()
-                        : null;
-
-        leave.setStartDate(startDate);
-        leave.setEndDate(endDate);
+        if (resultSet.getDate("end_date") != null) {
+            leave.setEndDate(
+                    resultSet
+                            .getDate("end_date")
+                            .toLocalDate()
+            );
+        }
 
         leave.setReason(
                 resultSet.getString("reason")
@@ -399,7 +435,6 @@ public class LeaveRepository {
         return leave;
     }
 
-
     // ============================================================
     // HELPER
     // ============================================================
@@ -410,6 +445,7 @@ public class LeaveRepository {
             return null;
         }
 
-        return value;
+        return value.trim();
     }
 }
+
