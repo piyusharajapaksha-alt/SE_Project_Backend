@@ -21,15 +21,29 @@ public class CorsConfig {
             public void addCorsMappings(CorsRegistry registry) {
 
                 registry.addMapping("/**")
-                        .allowedOrigins(frontendUrl)
+                        .allowedOriginPatterns(
+                                // Local computer
+                                "http://localhost:5173",
+                                "http://127.0.0.1:5173",
+
+                                // FRONTEND_URL from environment/config
+                                frontendUrl,
+
+                                // Private LAN networks
+                                "http://10.*.*.*:5173",
+                                "http://172.*.*.*:5173",
+                                "http://192.168.*.*:5173"
+                        )
                         .allowedMethods(
                                 "GET",
                                 "POST",
                                 "PUT",
+                                "PATCH",
                                 "DELETE",
                                 "OPTIONS"
                         )
-                        .allowedHeaders("*");
+                        .allowedHeaders("*")
+                        .maxAge(3600);
             }
         };
     }
