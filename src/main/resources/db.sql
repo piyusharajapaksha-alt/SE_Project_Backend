@@ -220,3 +220,102 @@ CREATE TABLE IF NOT EXISTS leave_requests (
             )
         )
 );
+
+-- ============================================================
+-- EVENT MANAGEMENT
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS events (
+    id BIGSERIAL PRIMARY KEY,
+
+    title VARCHAR(200) NOT NULL,
+
+    description TEXT,
+
+    organizer_id VARCHAR(50) NOT NULL,
+
+    category VARCHAR(100) NOT NULL,
+
+    event_date DATE NOT NULL,
+
+    start_time TIME NOT NULL,
+
+    end_time TIME NOT NULL,
+
+    location VARCHAR(200) NOT NULL,
+
+    capacity INTEGER NOT NULL
+        CHECK (capacity > 0),
+
+    status VARCHAR(30) NOT NULL DEFAULT 'Upcoming'
+        CHECK (
+            status IN (
+                'Upcoming',
+                'Ongoing',
+                'Completed',
+                'Cancelled'
+            )
+        ),
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_event_organizer
+        FOREIGN KEY (organizer_id)
+        REFERENCES employees(employee_number)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT valid_event_times
+        CHECK (end_time > start_time)
+);
+
+
+-- ============================================================
+-- EVENT REGISTRATIONS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS event_registrations (
+    id BIGSERIAL PRIMARY KEY,
+
+    event_id BIGINT NOT NULL,
+
+    employee_id VARCHAR(50) NOT NULL,
+
+    registered_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_event_registration_event
+        FOREIGN KEY (event_id)
+        REFERENCES events(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_event_registration_employee
+        FOREIGN KEY (employee_id)
+        REFERENCES employees(employee_number)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE,
+
+    CONSTRAINT unique_event_employee
+        UNIQUE (event_id, employee_id)
+);
+
+
+-- ============================================================
+-- INDEXES
+-- ============================================================
+
+CREATE INDEX IF NOT EXISTS idx_events_date
+    ON events(event_date);
+
+CREATE INDEX IF NOT EXISTS idx_events_status
+    ON events(status);
+
+CREATE INDEX IF NOT EXISTS idx_events_category
+    ON events(category);
+
+CREATE INDEX IF NOT EXISTS idx_event_registrations_event
+    ON event_registrations(event_id);
+
+CREATE INDEX IF NOT EXISTS idx_event_registrations_employee
+    ON event_registrations(employee_id);
