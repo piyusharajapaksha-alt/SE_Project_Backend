@@ -166,3 +166,57 @@ CREATE TABLE IF NOT EXISTS performance_reviews (
             review_period ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'
         )
 );
+
+
+-- ============================================================
+-- LEAVE MANAGEMENT
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS leave_requests (
+    id BIGSERIAL PRIMARY KEY,
+
+    employee_id VARCHAR(50) NOT NULL,
+
+    leave_type VARCHAR(50) NOT NULL,
+
+    start_date DATE NOT NULL,
+
+    end_date DATE NOT NULL,
+
+    reason TEXT NOT NULL,
+
+    approver_id VARCHAR(50),
+
+    status VARCHAR(30) NOT NULL DEFAULT 'Pending',
+
+    comment TEXT,
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_leave_employee
+        FOREIGN KEY (employee_id)
+        REFERENCES employees(employee_number)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_leave_approver
+        FOREIGN KEY (approver_id)
+        REFERENCES employees(employee_number)
+        ON UPDATE CASCADE
+        ON DELETE SET NULL,
+
+    CONSTRAINT valid_leave_dates
+        CHECK (end_date >= start_date),
+
+    CONSTRAINT valid_leave_status
+        CHECK (
+            status IN (
+                'Pending',
+                'Approved',
+                'Rejected',
+                'Cancelled'
+            )
+        )
+);
