@@ -605,3 +605,149 @@ FROM INFORMATION_SCHEMA.TABLES
 WHERE TABLE_TYPE = 'BASE TABLE'
 ORDER BY TABLE_NAME;
 GO
+
+
+
+USE StaffHub;
+GO
+
+/* ============================================================
+   ATTENDANCE MONITOR
+   ============================================================ */
+
+IF OBJECT_ID('dbo.attendance_monitor', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.attendance_monitor (
+        id BIGINT IDENTITY(1,1) PRIMARY KEY,
+
+        activation_code VARCHAR(6) NOT NULL,
+
+        active BIT NOT NULL DEFAULT 0,
+
+        activation_type VARCHAR(20) NOT NULL DEFAULT 'MANUAL',
+        -- MANUAL / SCHEDULE
+
+        activated_by VARCHAR(50) NULL,
+
+        activated_at DATETIME2 NULL,
+        deactivated_at DATETIME2 NULL,
+
+        current_qr_token VARCHAR(100) NULL,
+        qr_sequence INT NOT NULL DEFAULT 0,
+        qr_created_at DATETIME2 NULL,
+        qr_expires_at DATETIME2 NULL,
+
+        created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME()
+    );
+END;
+GO
+
+
+/* ============================================================
+   ATTENDANCE RECORD
+   One row per employee per working day.
+   ============================================================ */
+
+IF OBJECT_ID('dbo.attendance_records', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.attendance_records (
+        id BIGINT IDENTITY(1,1) PRIMARY KEY,
+
+        employee_id BIGINT NOT NULL,
+
+        attendance_date DATE NOT NULL,
+
+        check_in DATETIME2 NULL,
+        check_out DATETIME2 NULL,
+
+        status VARCHAR(30) NOT NULL DEFAULT 'PRESENT',
+        -- PRESENT / LATE / HALF_DAY / ABSENT / ON_LEAVE / OPEN
+
+        check_in_method VARCHAR(30) NULL,
+        check_out_method VARCHAR(30) NULL,
+
+        qr_session_id BIGINT NULL,
+
+        manual_correction BIT NOT NULL DEFAULT 0,
+
+        correction_reason VARCHAR(500) NULL,
+
+        created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+        updated_at DATETIME2 NULL,
+
+        CONSTRAINT FK_attendance_employee
+            FOREIGN KEY (employee_id)
+            REFERENCES dbo.employees(id),
+
+        CONSTRAINT UQ_attendance_employee_date
+            UNIQUE (employee_id, attendance_date)
+    );
+END;
+GO
+
+
+/* ============================================================
+   QR SCAN / AUDIT EVENTS
+   ============================================================ */
+
+IF OBJECT_ID('dbo.attendance_events', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.attendance_events (
+        id BIGINT IDENTITY(1,1) PRIMARY KEY,
+
+        monitor_id BIGINT NULL,
+
+        attendance_record_id BIGINT NULL,
+
+        employee_id BIGINT NULL,
+
+        action VARCHAR(30) NOT NULL,
+        -- CHECK_IN / CHECK_OUT / QR_ROTATED /
+        -- MONITOR_ACTIVATED / MONITOR_DEACTIVATED /
+        -- SCHEDULE_ACTIVATED / SCHEDULE_DEACTIVATED /
+        -- MANUAL_CORRECTION
+
+        event_time DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+
+        qr_sequence INT NULL,
+
+        performed_by VARCHAR(50) NULL,
+
+        details VARCHAR(1000) NULL,
+
+        CONSTRAINT FK_event_employee
+            FOREIGN KEY (employee_id)
+            REFERENCES dbo.employees(id)
+    );
+END;
+GO
+
+
+/* ============================================================
+   MONITOR SCHEDULE
+   ============================================================ */
+
+IF OBJECT_ID('dbo.attendance_schedules', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.attendance_schedules (
+        id BIGINT IDENTITY(1,1) PRIMARY KEY,
+
+        schedule_name VARCHAR(100) NOT NULL,
+
+        day_of_week INT NOT NULL,
+        -- 1 = Monday ... 7 = Sunday
+
+        start_time TIME NOT NULL,
+
+        end_time TIME NOT NULL,
+
+        enabled BIT NOT NULL DEFAULT 1,
+
+        created_by VARCHAR(50) NULL,
+
+        created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+
+        updated_at DATETIME2 NULL
+    );
+END;
+GO
