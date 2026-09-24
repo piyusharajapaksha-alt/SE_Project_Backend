@@ -18,97 +18,95 @@ public class AttendanceRepository {
         this.jdbc = jdbc;
     }
 
-    public AttendanceRecord findTodayByEmployee(Long employeeId) {
-
-        String sql = """
-            SELECT
-                a.*,
-                e.employee_number,
-                e.first_name,
-                e.last_name,
-                e.department
-            FROM attendance_records a
-            INNER JOIN employees e ON e.id = a.employee_id
-            WHERE a.employee_id = ?
-              AND a.attendance_date = CAST(GETDATE() AS DATE)
-            """;
-
-        List<AttendanceRecord> records = jdbc.query(
-                sql,
-                this::map,
-                employeeId
-        );
-
-        return records.isEmpty() ? null : records.get(0);
-    }
-
-    public List<AttendanceRecord> findByEmployee(Long employeeId) {
-
-        String sql = """
-            SELECT
-                a.*,
-                e.employee_number,
-                e.first_name,
-                e.last_name,
-                e.department
-            FROM attendance_records a
-            INNER JOIN employees e ON e.id = a.employee_id
-            WHERE a.employee_id = ?
-            ORDER BY a.attendance_date DESC
-            """;
-
-        return jdbc.query(sql, this::map, employeeId);
-    }
-
-    public List<AttendanceRecord> findByDate(LocalDate date) {
-
-        String sql = """
-            SELECT
-                a.*,
-                e.employee_number,
-                e.first_name,
-                e.last_name,
-                e.department
-            FROM attendance_records a
-            INNER JOIN employees e ON e.id = a.employee_id
-            WHERE a.attendance_date = ?
-            ORDER BY
-                CASE
-                    WHEN a.check_in IS NULL THEN 1
-                    ELSE 0
-                END,
-                a.check_in
-            """;
-
-        return jdbc.query(
-                sql,
-                this::map,
-                date
-        );
-    }
-
     public AttendanceRecord findByEmployeeAndDate(
             Long employeeId,
             LocalDate date
     ) {
 
-        String sql = """
-            SELECT
-                a.*,
-                e.employee_number,
-                e.first_name,
-                e.last_name,
-                e.department
-            FROM attendance_records a
-            INNER JOIN employees e ON e.id = a.employee_id
-            WHERE a.employee_id = ?
-              AND a.attendance_date = ?
-            """;
+        List<AttendanceRecord> result =
+                jdbc.query(
+                        """
+                        SELECT
+                            a.*,
+                            e.employee_number,
+                            e.first_name,
+                            e.last_name,
+                            e.department
+                        FROM attendance_records a
+                        INNER JOIN employees e
+                            ON e.id = a.employee_id
+                        WHERE a.employee_id = ?
+                          AND a.attendance_date = ?
+                        """,
+                        this::map,
+                        employeeId,
+                        date
+                );
 
-        List<AttendanceRecord> records =
-                jdbc.query(sql, this::map, employeeId, date);
+        return result.isEmpty()
+                ? null
+                : result.get(0);
+    }
 
-        return records.isEmpty() ? null : records.get(0);
+    public AttendanceRecord findTodayByEmployee(
+            Long employeeId
+    ) {
+
+        return findByEmployeeAndDate(
+                employeeId,
+                LocalDate.now()
+        );
+    }
+
+    public List<AttendanceRecord> findByEmployee(
+            Long employeeId
+    ) {
+
+        return jdbc.query(
+                """
+                SELECT
+                    a.*,
+                    e.employee_number,
+                    e.first_name,
+                    e.last_name,
+                    e.department
+                FROM attendance_records a
+                INNER JOIN employees e
+                    ON e.id = a.employee_id
+                WHERE a.employee_id = ?
+                ORDER BY a.attendance_date DESC
+                """,
+                this::map,
+                employeeId
+        );
+    }
+
+    public List<AttendanceRecord> findByDate(
+            LocalDate date
+    ) {
+
+        return jdbc.query(
+                """
+                SELECT
+                    a.*,
+                    e.employee_number,
+                    e.first_name,
+                    e.last_name,
+                    e.department
+                FROM attendance_records a
+                INNER JOIN employees e
+                    ON e.id = a.employee_id
+                WHERE a.attendance_date = ?
+                ORDER BY
+                    CASE
+                        WHEN a.check_in IS NULL THEN 1
+                        ELSE 0
+                    END,
+                    a.check_in
+                """,
+                this::map,
+                date
+        );
     }
 
     public Long create(
@@ -116,27 +114,27 @@ public class AttendanceRepository {
             LocalDate date,
             LocalDateTime checkIn,
             String method,
-            Long sessionId
+            Long sessionId,
+            String status
     ) {
 
-        String sql = """
-            INSERT INTO attendance_records
-            (
-                employee_id,
-                attendance_date,
-                check_in,
-                status,
-                check_in_method,
-                qr_session_id
-            )
-            VALUES (?, ?, ?, 'PRESENT', ?, ?)
-            """;
-
         jdbc.update(
-                sql,
+                """
+                INSERT INTO attendance_records
+                (
+                    employee_id,
+                    attendance_date,
+                    check_in,
+                    status,
+                    check_in_method,
+                    qr_session_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
                 employeeId,
                 date,
                 Timestamp.valueOf(checkIn),
+                status,
                 method,
                 sessionId
         );
@@ -159,7 +157,6 @@ public class AttendanceRepository {
                 SET
                     check_out = ?,
                     check_out_method = ?,
-                    status = 'PRESENT',
                     updated_at = SYSDATETIME()
                 WHERE id = ?
                 """,
@@ -189,12 +186,148 @@ public class AttendanceRepository {
                     updated_at = SYSDATETIME()
                 WHERE id = ?
                 """,
-                checkIn == null ? null : Timestamp.valueOf(checkIn),
-                checkOut == null ? null : Timestamp.valueOf(checkOut),
+                checkIn == null
+                        ? null
+                        : Timestamp.valueOf(checkIn),
+
+                checkOut == null
+                        ? null
+                        : Timestamp.valueOf(checkOut),
+
                 status,
                 reason,
                 id
         );
+    }
+
+    public boolean employeeExists(Long employeeId) {
+
+        Integer count =
+                jdbc.queryForObject(
+                        """
+                        SELECT COUNT(*)
+                        FROM employees
+                        WHERE id = ?
+                        """,
+                        Integer.class,
+                        employeeId
+                );
+
+        return count != null && count > 0;
+    }
+
+    public int countActiveEmployees() {
+
+        Integer count =
+                jdbc.queryForObject(
+                        """
+                        SELECT COUNT(*)
+                        FROM employees
+                        WHERE employment_status = 'Active'
+                        """,
+                        Integer.class
+                );
+
+        return count == null ? 0 : count;
+    }
+
+    public int countEmployeesOnApprovedLeave(
+            LocalDate date
+    ) {
+
+        Integer count =
+                jdbc.queryForObject(
+                        """
+                        SELECT COUNT(DISTINCT e.id)
+                        FROM employees e
+                        INNER JOIN leave_requests l
+                            ON l.employee_id = e.employee_number
+                        WHERE e.employment_status = 'Active'
+                          AND l.status = 'Approved'
+                          AND ? BETWEEN l.start_date AND l.end_date
+                        """,
+                        Integer.class,
+                        date
+                );
+
+        return count == null ? 0 : count;
+    }
+
+    public int countAttended(
+            LocalDate date
+    ) {
+
+        Integer count =
+                jdbc.queryForObject(
+                        """
+                        SELECT COUNT(*)
+                        FROM attendance_records
+                        WHERE attendance_date = ?
+                          AND check_in IS NOT NULL
+                        """,
+                        Integer.class,
+                        date
+                );
+
+        return count == null ? 0 : count;
+    }
+
+    public int countCheckedOut(
+            LocalDate date
+    ) {
+
+        Integer count =
+                jdbc.queryForObject(
+                        """
+                        SELECT COUNT(*)
+                        FROM attendance_records
+                        WHERE attendance_date = ?
+                          AND check_out IS NOT NULL
+                        """,
+                        Integer.class,
+                        date
+                );
+
+        return count == null ? 0 : count;
+    }
+
+    public int countCurrentlyWorking(
+            LocalDate date
+    ) {
+
+        Integer count =
+                jdbc.queryForObject(
+                        """
+                        SELECT COUNT(*)
+                        FROM attendance_records
+                        WHERE attendance_date = ?
+                          AND check_in IS NOT NULL
+                          AND check_out IS NULL
+                        """,
+                        Integer.class,
+                        date
+                );
+
+        return count == null ? 0 : count;
+    }
+
+    public int countLate(
+            LocalDate date
+    ) {
+
+        Integer count =
+                jdbc.queryForObject(
+                        """
+                        SELECT COUNT(*)
+                        FROM attendance_records
+                        WHERE attendance_date = ?
+                          AND status = 'LATE'
+                        """,
+                        Integer.class,
+                        date
+                );
+
+        return count == null ? 0 : count;
     }
 
     private AttendanceRecord map(
@@ -202,58 +335,90 @@ public class AttendanceRepository {
             int row
     ) throws java.sql.SQLException {
 
-        AttendanceRecord a = new AttendanceRecord();
+        AttendanceRecord record =
+                new AttendanceRecord();
 
-        a.setId(rs.getLong("id"));
-        a.setEmployeeId(rs.getLong("employee_id"));
+        record.setId(
+                rs.getLong("id")
+        );
 
-        a.setEmployeeNumber(
+        record.setEmployeeId(
+                rs.getLong("employee_id")
+        );
+
+        record.setEmployeeNumber(
                 rs.getString("employee_number")
         );
 
-        a.setEmployeeName(
-                rs.getString("first_name")
-                        + " "
-                        + rs.getString("last_name")
+        record.setEmployeeName(
+                (
+                    rs.getString("first_name") == null
+                        ? ""
+                        : rs.getString("first_name")
+                )
+                + " "
+                +
+                (
+                    rs.getString("last_name") == null
+                        ? ""
+                        : rs.getString("last_name")
+                )
         );
 
-        a.setDepartment(
+        record.setDepartment(
                 rs.getString("department")
         );
 
-        a.setAttendanceDate(
-                rs.getDate("attendance_date").toLocalDate()
+        record.setAttendanceDate(
+                rs.getDate("attendance_date")
+                        .toLocalDate()
         );
 
-        Timestamp in = rs.getTimestamp("check_in");
-        Timestamp out = rs.getTimestamp("check_out");
+        Timestamp in =
+                rs.getTimestamp("check_in");
+
+        Timestamp out =
+                rs.getTimestamp("check_out");
 
         if (in != null) {
-            a.setCheckIn(in.toLocalDateTime());
+            record.setCheckIn(
+                    in.toLocalDateTime()
+            );
         }
 
         if (out != null) {
-            a.setCheckOut(out.toLocalDateTime());
+            record.setCheckOut(
+                    out.toLocalDateTime()
+            );
         }
 
-        a.setStatus(rs.getString("status"));
-        a.setCheckInMethod(rs.getString("check_in_method"));
-        a.setCheckOutMethod(rs.getString("check_out_method"));
+        record.setStatus(
+                rs.getString("status")
+        );
 
-        long sessionId = rs.getLong("qr_session_id");
+        record.setCheckInMethod(
+                rs.getString("check_in_method")
+        );
+
+        record.setCheckOutMethod(
+                rs.getString("check_out_method")
+        );
+
+        long session =
+                rs.getLong("qr_session_id");
 
         if (!rs.wasNull()) {
-            a.setQrSessionId(sessionId);
+            record.setQrSessionId(session);
         }
 
-        a.setManualCorrection(
+        record.setManualCorrection(
                 rs.getBoolean("manual_correction")
         );
 
-        a.setCorrectionReason(
+        record.setCorrectionReason(
                 rs.getString("correction_reason")
         );
 
-        return a;
+        return record;
     }
 }

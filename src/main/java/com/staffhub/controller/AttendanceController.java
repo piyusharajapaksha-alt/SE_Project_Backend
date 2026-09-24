@@ -22,10 +22,6 @@ public class AttendanceController {
         this.service = service;
     }
 
-    /*
-     * QR MONITOR
-     */
-
     @GetMapping("/monitor")
     public AttendanceMonitor monitor() {
         return service.getMonitor();
@@ -36,33 +32,40 @@ public class AttendanceController {
             @RequestBody Map<String, String> body
     ) {
 
-        String code = body.get("code");
-        String user = body.get("user");
-        String type = body.getOrDefault(
-                "type",
-                "MANUAL"
-        );
-
         return service.activate(
-                code,
-                user,
-                type
+                body.get("code"),
+                body.get("user"),
+                body.getOrDefault(
+                        "type",
+                        "MANUAL"
+                )
         );
     }
 
     @PostMapping("/monitor/deactivate")
-    public void deactivate() {
-        service.deactivate();
+    public void deactivate(
+            @RequestBody(required = false)
+            Map<String, String> body
+    ) {
+
+        String user =
+                body == null
+                        ? "SYSTEM"
+                        : body.getOrDefault(
+                                "user",
+                                "SYSTEM"
+                        );
+
+        service.deactivate(
+                user,
+                "MANUAL"
+        );
     }
 
     @PostMapping("/monitor/rotate")
     public AttendanceMonitor rotate() {
         return service.rotateQr();
     }
-
-    /*
-     * EMPLOYEE SCAN
-     */
 
     @PostMapping("/scan")
     public AttendanceRecord scan(
@@ -71,11 +74,13 @@ public class AttendanceController {
 
         Long employeeId =
                 Long.valueOf(
-                        body.get("employeeId").toString()
+                        body.get("employeeId")
+                                .toString()
                 );
 
         String token =
-                body.get("token").toString();
+                body.get("token")
+                        .toString();
 
         return service.scan(
                 employeeId,
@@ -83,14 +88,11 @@ public class AttendanceController {
         );
     }
 
-    /*
-     * EMPLOYEE
-     */
-
     @GetMapping("/employee/{employeeId}/today")
     public AttendanceRecord today(
             @PathVariable Long employeeId
     ) {
+
         return service.today(employeeId);
     }
 
@@ -98,16 +100,16 @@ public class AttendanceController {
     public List<AttendanceRecord> history(
             @PathVariable Long employeeId
     ) {
-        return service.employeeHistory(employeeId);
-    }
 
-    /*
-     * MANAGEMENT
-     */
+        return service.history(
+                employeeId
+        );
+    }
 
     @GetMapping("/records")
     public List<AttendanceRecord> records(
-            @RequestParam(required = false) String date
+            @RequestParam(required = false)
+            String date
     ) {
 
         LocalDate selectedDate =
@@ -115,7 +117,25 @@ public class AttendanceController {
                         ? LocalDate.now()
                         : LocalDate.parse(date);
 
-        return service.date(selectedDate);
+        return service.records(
+                selectedDate
+        );
+    }
+
+    @GetMapping("/summary")
+    public Map<String, Object> summary(
+            @RequestParam(required = false)
+            String date
+    ) {
+
+        LocalDate selectedDate =
+                date == null
+                        ? LocalDate.now()
+                        : LocalDate.parse(date);
+
+        return service.summary(
+                selectedDate
+        );
     }
 
     @PutMapping("/records/{id}")

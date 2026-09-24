@@ -5,6 +5,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -18,34 +19,40 @@ public class AttendanceMonitorRepository {
 
     public AttendanceMonitor getMonitor() {
 
-        List<AttendanceMonitor> list = jdbc.query(
-                """
-                SELECT TOP 1 *
-                FROM attendance_monitor
-                ORDER BY id DESC
-                """,
-                this::map
-        );
+        List<AttendanceMonitor> result =
+                jdbc.query(
+                        """
+                        SELECT TOP 1 *
+                        FROM attendance_monitor
+                        ORDER BY id DESC
+                        """,
+                        this::map
+                );
 
-        return list.isEmpty() ? null : list.get(0);
+        return result.isEmpty()
+                ? null
+                : result.get(0);
     }
 
     public AttendanceMonitor getActiveMonitor() {
 
-        List<AttendanceMonitor> list = jdbc.query(
-                """
-                SELECT TOP 1 *
-                FROM attendance_monitor
-                WHERE active = 1
-                ORDER BY id DESC
-                """,
-                this::map
-        );
+        List<AttendanceMonitor> result =
+                jdbc.query(
+                        """
+                        SELECT TOP 1 *
+                        FROM attendance_monitor
+                        WHERE active = 1
+                        ORDER BY id DESC
+                        """,
+                        this::map
+                );
 
-        return list.isEmpty() ? null : list.get(0);
+        return result.isEmpty()
+                ? null
+                : result.get(0);
     }
 
-    public Long create(String code) {
+    public Long create(String activationCode) {
 
         jdbc.update(
                 """
@@ -53,11 +60,12 @@ public class AttendanceMonitorRepository {
                 (
                     activation_code,
                     active,
-                    activation_type
+                    activation_type,
+                    qr_sequence
                 )
-                VALUES (?, 0, 'MANUAL')
+                VALUES (?, 0, 'MANUAL', 0)
                 """,
-                code
+                activationCode
         );
 
         return jdbc.queryForObject(
@@ -69,11 +77,11 @@ public class AttendanceMonitorRepository {
     public void activate(
             Long id,
             String activatedBy,
-            String type,
+            String activationType,
             String token,
             int sequence,
-            java.time.LocalDateTime created,
-            java.time.LocalDateTime expires
+            LocalDateTime created,
+            LocalDateTime expires
     ) {
 
         jdbc.update(
@@ -91,7 +99,7 @@ public class AttendanceMonitorRepository {
                     qr_expires_at = ?
                 WHERE id = ?
                 """,
-                type,
+                activationType,
                 activatedBy,
                 token,
                 sequence,
@@ -101,7 +109,10 @@ public class AttendanceMonitorRepository {
         );
     }
 
-    public void deactivate(Long id) {
+    public void deactivate(
+            Long id,
+            String newActivationCode
+    ) {
 
         jdbc.update(
                 """
@@ -111,9 +122,11 @@ public class AttendanceMonitorRepository {
                     deactivated_at = SYSDATETIME(),
                     current_qr_token = NULL,
                     qr_created_at = NULL,
-                    qr_expires_at = NULL
+                    qr_expires_at = NULL,
+                    activation_code = ?
                 WHERE id = ?
                 """,
+                newActivationCode,
                 id
         );
     }
@@ -122,8 +135,8 @@ public class AttendanceMonitorRepository {
             Long id,
             String token,
             int sequence,
-            java.time.LocalDateTime created,
-            java.time.LocalDateTime expires
+            LocalDateTime created,
+            LocalDateTime expires
     ) {
 
         jdbc.update(
@@ -145,18 +158,109 @@ public class AttendanceMonitorRepository {
         );
     }
 
-    public String getActivationCode() {
+    public Long createSession(
+            Long monitorId,
+            String activationType,
+            String activatedBy
+    ) {
 
-        List<String> codes = jdbc.query(
+        jdbc.update(
                 """
-                SELECT TOP 1 activation_code
-                FROM attendance_monitor
-                ORDER BY id DESC
+                INSERT INTO attendance_monitor_sessions
+                (
+                    monitor_id,
+                    activation_type,
+                    activated_by
+                )
+                VALUES (?, ?, ?)
                 """,
-                (rs, row) -> rs.getString(1)
+                monitorId,
+                activationType,
+                activatedBy
         );
 
-        return codes.isEmpty() ? null : codes.get(0);
+        return jdbc.queryForObject(
+                "SELECT CAST(SCOPE_IDENTITY() AS BIGINT)",
+                Long.class
+        );
+    }
+
+    public Long getOpenSessionId(Long monitorId) {
+
+        List<Long> result =
+                jdbc.query(
+                        """
+                        SELECT TOP 1 id
+                        FROM attendance_monitor_sessions
+                        WHERE monitor_id = ?
+                          AND deactivated_at IS NULL
+                        ORDER BY id DESC
+                        """,
+                        (rs, row) ->
+                                rs.getLong("id"),
+                        monitorId
+                );
+
+        return result.isEmpty()
+                ? null
+                : result.get(0);
+    }
+
+    public void closeSession(
+            Long sessionId,
+            String deactivatedBy,
+            String deactivationType
+    ) {
+
+        jdbc.update(
+                """
+                UPDATE attendance_monitor_sessions
+                SET
+                    deactivated_by = ?,
+                    deactivated_at = SYSDATETIME(),
+                    deactivation_type = ?
+                WHERE id = ?
+                  AND deactivated_at IS NULL
+                """,
+                deactivatedBy,
+                deactivationType,
+                sessionId
+        );
+    }
+
+    public void logEvent(
+            Long monitorId,
+            Long attendanceRecordId,
+            Long employeeId,
+            String action,
+            Integer qrSequence,
+            String performedBy,
+            String details
+    ) {
+
+        jdbc.update(
+                """
+                INSERT INTO attendance_events
+                (
+                    monitor_id,
+                    attendance_record_id,
+                    employee_id,
+                    action,
+                    event_time,
+                    qr_sequence,
+                    performed_by,
+                    details
+                )
+                VALUES (?, ?, ?, ?, SYSDATETIME(), ?, ?, ?)
+                """,
+                monitorId,
+                attendanceRecordId,
+                employeeId,
+                action,
+                qrSequence,
+                performedBy,
+                details
+        );
     }
 
     private AttendanceMonitor map(
@@ -164,34 +268,73 @@ public class AttendanceMonitorRepository {
             int row
     ) throws java.sql.SQLException {
 
-        AttendanceMonitor m = new AttendanceMonitor();
+        AttendanceMonitor monitor =
+                new AttendanceMonitor();
 
-        m.setId(rs.getLong("id"));
-        m.setActivationCode(rs.getString("activation_code"));
-        m.setActive(rs.getBoolean("active"));
-        m.setActivationType(rs.getString("activation_type"));
-        m.setActivatedBy(rs.getString("activated_by"));
+        monitor.setId(
+                rs.getLong("id")
+        );
 
-        Timestamp activated = rs.getTimestamp("activated_at");
-        Timestamp deactivated = rs.getTimestamp("deactivated_at");
-        Timestamp created = rs.getTimestamp("qr_created_at");
-        Timestamp expires = rs.getTimestamp("qr_expires_at");
+        monitor.setActivationCode(
+                rs.getString("activation_code")
+        );
 
-        if (activated != null)
-            m.setActivatedAt(activated.toLocalDateTime());
+        monitor.setActive(
+                rs.getBoolean("active")
+        );
 
-        if (deactivated != null)
-            m.setDeactivatedAt(deactivated.toLocalDateTime());
+        monitor.setActivationType(
+                rs.getString("activation_type")
+        );
 
-        m.setCurrentQrToken(rs.getString("current_qr_token"));
-        m.setQrSequence(rs.getInt("qr_sequence"));
+        monitor.setActivatedBy(
+                rs.getString("activated_by")
+        );
 
-        if (created != null)
-            m.setQrCreatedAt(created.toLocalDateTime());
+        Timestamp activated =
+                rs.getTimestamp("activated_at");
 
-        if (expires != null)
-            m.setQrExpiresAt(expires.toLocalDateTime());
+        Timestamp deactivated =
+                rs.getTimestamp("deactivated_at");
 
-        return m;
+        Timestamp created =
+                rs.getTimestamp("qr_created_at");
+
+        Timestamp expires =
+                rs.getTimestamp("qr_expires_at");
+
+        if (activated != null) {
+            monitor.setActivatedAt(
+                    activated.toLocalDateTime()
+            );
+        }
+
+        if (deactivated != null) {
+            monitor.setDeactivatedAt(
+                    deactivated.toLocalDateTime()
+            );
+        }
+
+        monitor.setCurrentQrToken(
+                rs.getString("current_qr_token")
+        );
+
+        monitor.setQrSequence(
+                rs.getInt("qr_sequence")
+        );
+
+        if (created != null) {
+            monitor.setQrCreatedAt(
+                    created.toLocalDateTime()
+            );
+        }
+
+        if (expires != null) {
+            monitor.setQrExpiresAt(
+                    expires.toLocalDateTime()
+            );
+        }
+
+        return monitor;
     }
 }

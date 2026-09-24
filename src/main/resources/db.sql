@@ -751,3 +751,92 @@ BEGIN
     );
 END;
 GO
+
+USE StaffHub;
+GO
+
+/* ============================================================
+   ATTENDANCE MONITOR SESSION HISTORY
+   One row = one activated monitor session
+   ============================================================ */
+
+IF OBJECT_ID('dbo.attendance_monitor_sessions', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.attendance_monitor_sessions
+    (
+        id BIGINT IDENTITY(1,1) PRIMARY KEY,
+
+        monitor_id BIGINT NOT NULL,
+
+        activation_type VARCHAR(20) NOT NULL,
+        -- MANUAL / SCHEDULE
+
+        activated_by VARCHAR(50) NULL,
+
+        activated_at DATETIME2 NOT NULL
+            DEFAULT SYSDATETIME(),
+
+        deactivated_by VARCHAR(50) NULL,
+
+        deactivated_at DATETIME2 NULL,
+
+        deactivation_type VARCHAR(20) NULL,
+        -- MANUAL / SCHEDULE
+
+        CONSTRAINT FK_monitor_session_monitor
+            FOREIGN KEY (monitor_id)
+            REFERENCES dbo.attendance_monitor(id)
+    );
+END;
+GO
+
+
+/* ============================================================
+   ADD SESSION FK TO ATTENDANCE RECORDS
+   ============================================================ */
+
+IF NOT EXISTS
+(
+    SELECT 1
+    FROM sys.foreign_keys
+    WHERE name = 'FK_attendance_session'
+)
+BEGIN
+    ALTER TABLE dbo.attendance_records
+    ADD CONSTRAINT FK_attendance_session
+        FOREIGN KEY (qr_session_id)
+        REFERENCES dbo.attendance_monitor_sessions(id);
+END;
+GO
+
+
+/* ============================================================
+   AUDIT INDEXES
+   ============================================================ */
+
+IF NOT EXISTS
+(
+    SELECT 1
+    FROM sys.indexes
+    WHERE name = 'IX_attendance_events_event_time'
+      AND object_id = OBJECT_ID('dbo.attendance_events')
+)
+BEGIN
+    CREATE INDEX IX_attendance_events_event_time
+        ON dbo.attendance_events(event_time DESC);
+END;
+GO
+
+
+IF NOT EXISTS
+(
+    SELECT 1
+    FROM sys.indexes
+    WHERE name = 'IX_attendance_records_date'
+      AND object_id = OBJECT_ID('dbo.attendance_records')
+)
+BEGIN
+    CREATE INDEX IX_attendance_records_date
+        ON dbo.attendance_records(attendance_date);
+END;
+GO

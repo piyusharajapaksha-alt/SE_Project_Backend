@@ -15,6 +15,7 @@ public class AttendanceMonitor {
     private String activatedBy;
 
     private LocalDateTime activatedAt;
+
     private LocalDateTime deactivatedAt;
 
     private String currentQrToken;
@@ -22,6 +23,7 @@ public class AttendanceMonitor {
     private int qrSequence;
 
     private LocalDateTime qrCreatedAt;
+
     private LocalDateTime qrExpiresAt;
 
     public Long getId() {
