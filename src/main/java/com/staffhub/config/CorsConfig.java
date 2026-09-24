@@ -18,22 +18,27 @@ public class CorsConfig {
         return new WebMvcConfigurer() {
 
             @Override
-            public void addCorsMappings(CorsRegistry registry) {
+            public void addCorsMappings(
+                    CorsRegistry registry
+            ) {
 
                 registry.addMapping("/**")
-                        .allowedOriginPatterns(
-                                // Local computer
-                                "http://localhost:5173",
-                                "http://127.0.0.1:5173",
 
-                                // FRONTEND_URL from environment/config
+                        .allowedOriginPatterns(
+
+                                // Local development
+                                "http://localhost:*",
+                                "http://127.0.0.1:*",
+
+                                // Configured frontend
                                 frontendUrl,
 
-                                // Private LAN networks
-                                "http://10.*.*.*:5173",
-                                "http://172.*.*.*:5173",
-                                "http://192.168.*.*:5173"
+                                // LAN development
+                                "http://10.*.*.*:*",
+                                "http://172.*.*.*:*",
+                                "http://192.168.*.*:*"
                         )
+
                         .allowedMethods(
                                 "GET",
                                 "POST",
@@ -42,7 +47,13 @@ public class CorsConfig {
                                 "DELETE",
                                 "OPTIONS"
                         )
+
                         .allowedHeaders("*")
+
+                        // IMPORTANT:
+                        // Required for JSESSIONID and XSRF cookies.
+                        .allowCredentials(true)
+
                         .maxAge(3600);
             }
         };

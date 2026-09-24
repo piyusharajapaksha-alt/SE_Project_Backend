@@ -981,3 +981,20 @@ SELECT *
 FROM attendance_schedules
 ORDER BY id;
 GO
+
+CREATE TABLE staffhub_auth_users (
+    id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    employee_id BIGINT NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    enabled BIT NOT NULL CONSTRAINT DF_staffhub_auth_users_enabled DEFAULT 1,
+    created_at DATETIME2 NOT NULL CONSTRAINT DF_staffhub_auth_users_created_at DEFAULT GETDATE(),
+    updated_at DATETIME2 NULL,
+
+    CONSTRAINT UQ_staffhub_auth_users_employee UNIQUE (employee_id),
+    CONSTRAINT UQ_staffhub_auth_users_email UNIQUE (email),
+
+    CONSTRAINT FK_staffhub_auth_users_employee
+        FOREIGN KEY (employee_id)
+        REFERENCES employees(id)
+);
