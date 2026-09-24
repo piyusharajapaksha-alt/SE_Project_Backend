@@ -30,7 +30,6 @@ public class AttendanceController {
 
     @GetMapping("/monitor")
     public AttendanceMonitor monitor() {
-
         return service.getMonitor();
     }
 
@@ -38,17 +37,10 @@ public class AttendanceController {
     public AttendanceMonitor activate(
             @RequestBody Map<String, String> body
     ) {
-
         return service.activate(
                 body.get("code"),
-                body.getOrDefault(
-                        "user",
-                        "SYSTEM"
-                ),
-                body.getOrDefault(
-                        "type",
-                        "MANUAL"
-                )
+                body.getOrDefault("user", "SYSTEM"),
+                body.getOrDefault("type", "MANUAL")
         );
     }
 
@@ -57,7 +49,6 @@ public class AttendanceController {
             @RequestBody(required = false)
             Map<String, String> body
     ) {
-
         String user =
                 body == null
                         ? "SYSTEM"
@@ -74,10 +65,7 @@ public class AttendanceController {
                                 "MANUAL"
                         );
 
-        service.deactivate(
-                user,
-                type
-        );
+        service.deactivate(user, type);
 
         return Map.of(
                 "message",
@@ -87,57 +75,58 @@ public class AttendanceController {
 
     @PostMapping("/monitor/rotate")
     public AttendanceMonitor rotate() {
-
         return service.rotateQr();
     }
 
+    /*
+     * employeeId accepts:
+     *
+     * 1
+     * 15
+     * EMP001
+     * EMP015
+     *
+     * This keeps the endpoint compatible with the
+     * current StaffHub authentication system.
+     */
     @PostMapping("/scan")
     public AttendanceRecord scan(
             @RequestBody Map<String, Object> body
     ) {
-
-        if (body == null
-                || body.get("employeeId") == null
-                || body.get("token") == null) {
-
+        if (
+                body == null ||
+                body.get("employeeId") == null ||
+                body.get("token") == null
+        ) {
             throw new IllegalArgumentException(
                     "employeeId and token are required"
             );
         }
 
-        Long employeeId =
-                Long.valueOf(
-                        body.get(
-                                "employeeId"
-                        ).toString()
-                );
+        String employeeIdentifier =
+                body.get("employeeId").toString();
 
         String token =
-                body.get("token")
-                        .toString();
+                body.get("token").toString();
 
         return service.scan(
-                employeeId,
+                employeeIdentifier,
                 token
         );
     }
 
     @GetMapping("/employee/{employeeId}/today")
     public AttendanceRecord today(
-            @PathVariable Long employeeId
+            @PathVariable String employeeId
     ) {
-
         return service.today(employeeId);
     }
 
     @GetMapping("/employee/{employeeId}")
     public List<AttendanceRecord> history(
-            @PathVariable Long employeeId
+            @PathVariable String employeeId
     ) {
-
-        return service.history(
-                employeeId
-        );
+        return service.history(employeeId);
     }
 
     @GetMapping("/records")
@@ -145,15 +134,12 @@ public class AttendanceController {
             @RequestParam(required = false)
             String date
     ) {
-
         LocalDate selectedDate =
                 date == null
                         ? LocalDate.now()
                         : LocalDate.parse(date);
 
-        return service.records(
-                selectedDate
-        );
+        return service.records(selectedDate);
     }
 
     @GetMapping("/summary")
@@ -161,15 +147,12 @@ public class AttendanceController {
             @RequestParam(required = false)
             String date
     ) {
-
         LocalDate selectedDate =
                 date == null
                         ? LocalDate.now()
                         : LocalDate.parse(date);
 
-        return service.summary(
-                selectedDate
-        );
+        return service.summary(selectedDate);
     }
 
     @PutMapping("/records/{id}")
@@ -177,7 +160,6 @@ public class AttendanceController {
             @PathVariable Long id,
             @RequestBody Map<String, String> body
     ) {
-
         service.correct(
                 id,
                 body.get("checkIn"),
@@ -192,13 +174,6 @@ public class AttendanceController {
         );
     }
 
-    /**
-     * Activity/audit log for Attendance Management.
-     *
-     * Example:
-     * GET /api/attendance/events
-     * GET /api/attendance/events?limit=50
-     */
     @GetMapping("/events")
     public List<AttendanceEvent> events(
             @RequestParam(
@@ -207,9 +182,6 @@ public class AttendanceController {
             )
             int limit
     ) {
-
-        return monitorRepository.findEvents(
-                limit
-        );
+        return monitorRepository.findEvents(limit);
     }
 }

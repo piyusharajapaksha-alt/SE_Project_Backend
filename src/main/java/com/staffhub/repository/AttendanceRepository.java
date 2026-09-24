@@ -443,4 +443,76 @@ public class AttendanceRepository {
 
         return record;
     }
+
+    public Long resolveEmployeeId(
+        String employeeIdentifier
+) {
+
+    if (
+            employeeIdentifier == null ||
+            employeeIdentifier.isBlank()
+    ) {
+        return null;
+    }
+
+    String value =
+            employeeIdentifier.trim();
+
+    List<Long> result =
+            jdbc.query(
+                    """
+                    SELECT TOP 1 id
+                    FROM employees
+                    WHERE employment_status = 'Active'
+                      AND (
+                          employee_number = ?
+                          OR CAST(id AS VARCHAR(50)) = ?
+                      )
+                    """,
+                    (rs, row) ->
+                            rs.getLong("id"),
+                    value,
+                    value
+            );
+
+    return result.isEmpty()
+            ? null
+            : result.get(0);
+}
+
+
+public boolean employeeOnApprovedLeave(
+        String employeeIdentifier,
+        LocalDate date
+) {
+    if (employeeIdentifier == null || employeeIdentifier.isBlank()) {
+        return false;
+    }
+
+    String value = employeeIdentifier.trim();
+
+    Integer count = jdbc.queryForObject(
+            """
+            SELECT COUNT(*)
+            FROM leave_requests lr
+            INNER JOIN employees e
+                ON e.id = lr.employee_id
+            WHERE
+                (
+                    e.employee_number = ?
+                    OR CAST(e.id AS VARCHAR(50)) = ?
+                )
+                AND CAST(lr.start_date AS DATE) <= ?
+                AND CAST(lr.end_date AS DATE) >= ?
+                AND UPPER(lr.status) = 'APPROVED'
+            """,
+            Integer.class,
+            value,
+            value,
+            date,
+            date
+    );
+
+    return count != null && count > 0;
+}
 }
