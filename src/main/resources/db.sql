@@ -840,3 +840,144 @@ BEGIN
         ON dbo.attendance_records(attendance_date);
 END;
 GO
+
+-- ============================================================
+-- StaffHub Attendance Schedule Migration
+-- Old schema -> Current backend schema
+-- ============================================================
+
+-- 1. Add schedule_type
+IF COL_LENGTH('attendance_schedules', 'schedule_type') IS NULL
+BEGIN
+    ALTER TABLE attendance_schedules
+    ADD schedule_type VARCHAR(20) NULL;
+END;
+GO
+
+-- 2. Add schedule_date
+IF COL_LENGTH('attendance_schedules', 'schedule_date') IS NULL
+BEGIN
+    ALTER TABLE attendance_schedules
+    ADD schedule_date DATE NULL;
+END;
+GO
+
+
+-- ============================================================
+-- 3. Add temporary column for the old INT day_of_week
+-- ============================================================
+
+IF COL_LENGTH('attendance_schedules', 'day_of_week_old') IS NULL
+BEGIN
+    ALTER TABLE attendance_schedules
+    ADD day_of_week_old INT NULL;
+END;
+GO
+
+
+-- ============================================================
+-- 4. Copy existing INT day values
+-- ============================================================
+
+UPDATE attendance_schedules
+SET day_of_week_old = day_of_week
+WHERE day_of_week_old IS NULL;
+GO
+
+
+-- ============================================================
+-- 5. Remove old INT day_of_week column
+-- ============================================================
+
+ALTER TABLE attendance_schedules
+DROP COLUMN day_of_week;
+GO
+
+
+-- ============================================================
+-- 6. Create new VARCHAR day_of_week column
+-- ============================================================
+
+ALTER TABLE attendance_schedules
+ADD day_of_week VARCHAR(20) NULL;
+GO
+
+
+-- ============================================================
+-- 7. Convert old numbers to day names
+--
+-- 1 = Monday
+-- 2 = Tuesday
+-- 3 = Wednesday
+-- 4 = Thursday
+-- 5 = Friday
+-- 6 = Saturday
+-- 7 = Sunday
+-- ============================================================
+
+UPDATE attendance_schedules
+SET day_of_week =
+    CASE day_of_week_old
+        WHEN 1 THEN 'MONDAY'
+        WHEN 2 THEN 'TUESDAY'
+        WHEN 3 THEN 'WEDNESDAY'
+        WHEN 4 THEN 'THURSDAY'
+        WHEN 5 THEN 'FRIDAY'
+        WHEN 6 THEN 'SATURDAY'
+        WHEN 7 THEN 'SUNDAY'
+        ELSE NULL
+    END;
+GO
+
+
+-- ============================================================
+-- 8. Remove temporary column
+-- ============================================================
+
+ALTER TABLE attendance_schedules
+DROP COLUMN day_of_week_old;
+GO
+
+
+-- ============================================================
+-- 9. Set schedule type for existing records
+--
+-- Existing records with a day_of_week
+-- become WEEKLY.
+--
+-- Records without a day become DAILY.
+-- ============================================================
+
+UPDATE attendance_schedules
+SET schedule_type =
+    CASE
+        WHEN day_of_week IS NOT NULL
+             THEN 'WEEKLY'
+        ELSE 'DAILY'
+    END
+WHERE schedule_type IS NULL;
+GO
+
+
+-- ============================================================
+-- 10. Verify final structure
+-- ============================================================
+
+SELECT
+    COLUMN_NAME,
+    DATA_TYPE,
+    IS_NULLABLE
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_NAME = 'attendance_schedules'
+ORDER BY ORDINAL_POSITION;
+GO
+
+
+-- ============================================================
+-- 11. Verify existing data
+-- ============================================================
+
+SELECT *
+FROM attendance_schedules
+ORDER BY id;
+GO
