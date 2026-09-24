@@ -202,7 +202,9 @@ public class AttendanceRepository {
         );
     }
 
-    public boolean employeeExists(Long employeeId) {
+    public boolean employeeExists(
+            Long employeeId
+    ) {
 
         Integer count =
                 jdbc.queryForObject(
@@ -219,31 +221,103 @@ public class AttendanceRepository {
         return count != null && count > 0;
     }
 
+    /*
+     * Resolve:
+     *
+     * EMP001 -> employees.id
+     * EMP002 -> employees.id
+     * 1      -> employees.id
+     * 2      -> employees.id
+     */
+    public Long resolveEmployeeId(
+            String employeeIdentifier
+    ) {
+
+        if (
+                employeeIdentifier == null
+                        || employeeIdentifier.isBlank()
+        ) {
+            return null;
+        }
+
+        String value =
+                employeeIdentifier.trim();
+
+        List<Long> result =
+                jdbc.query(
+                        """
+                        SELECT TOP 1 id
+                        FROM employees
+                        WHERE employment_status = 'Active'
+                          AND (
+                              employee_number = ?
+                              OR CAST(id AS VARCHAR(50)) = ?
+                          )
+                        """,
+                        (rs, row) ->
+                                rs.getLong("id"),
+                        value,
+                        value
+                );
+
+        return result.isEmpty()
+                ? null
+                : result.get(0);
+    }
+
+    /*
+     * IMPORTANT:
+     *
+     * Leave module stores employee_id as EMP001,
+     * while attendance_records stores the numeric
+     * employees.id.
+     *
+     * Therefore we compare:
+     *
+     * employees.employee_number
+     * =
+     * leave_requests.employee_id
+     */
     public boolean employeeOnApprovedLeave(
-            Long employeeId,
+            String employeeIdentifier,
             LocalDate date
     ) {
+
+        if (
+                employeeIdentifier == null
+                        || employeeIdentifier.isBlank()
+        ) {
+            return false;
+        }
+
+        String value =
+                employeeIdentifier.trim();
 
         Integer count =
                 jdbc.queryForObject(
                         """
                         SELECT COUNT(*)
-                        FROM leave_requests
-                        WHERE employee_id =
+                        FROM leave_requests l
+                        INNER JOIN employees e
+                            ON e.employee_number = l.employee_id
+                        WHERE
                             (
-                                SELECT employee_number
-                                FROM employees
-                                WHERE id = ?
+                                e.employee_number = ?
+                                OR CAST(e.id AS VARCHAR(50)) = ?
                             )
-                          AND status = 'Approved'
-                          AND ? BETWEEN start_date AND end_date
+                            AND l.status = 'Approved'
+                            AND ? BETWEEN
+                                l.start_date
+                                AND l.end_date
                         """,
                         Integer.class,
-                        employeeId,
+                        value,
+                        value,
                         date
                 );
 
-        return count != null && count > 0;
+        return count != null
+                && count > 0;
     }
 
     public int countActiveEmployees() {
@@ -258,7 +332,9 @@ public class AttendanceRepository {
                         Integer.class
                 );
 
-        return count == null ? 0 : count;
+        return count == null
+                ? 0
+                : count;
     }
 
     public int countEmployeesOnApprovedLeave(
@@ -271,19 +347,26 @@ public class AttendanceRepository {
                         SELECT COUNT(DISTINCT e.id)
                         FROM employees e
                         INNER JOIN leave_requests l
-                            ON l.employee_id = e.employee_number
+                            ON l.employee_id =
+                               e.employee_number
                         WHERE e.employment_status = 'Active'
                           AND l.status = 'Approved'
-                          AND ? BETWEEN l.start_date AND l.end_date
+                          AND ? BETWEEN
+                              l.start_date
+                              AND l.end_date
                         """,
                         Integer.class,
                         date
                 );
 
-        return count == null ? 0 : count;
+        return count == null
+                ? 0
+                : count;
     }
 
-    public int countAttended(LocalDate date) {
+    public int countAttended(
+            LocalDate date
+    ) {
 
         Integer count =
                 jdbc.queryForObject(
@@ -297,10 +380,14 @@ public class AttendanceRepository {
                         date
                 );
 
-        return count == null ? 0 : count;
+        return count == null
+                ? 0
+                : count;
     }
 
-    public int countCheckedOut(LocalDate date) {
+    public int countCheckedOut(
+            LocalDate date
+    ) {
 
         Integer count =
                 jdbc.queryForObject(
@@ -314,10 +401,14 @@ public class AttendanceRepository {
                         date
                 );
 
-        return count == null ? 0 : count;
+        return count == null
+                ? 0
+                : count;
     }
 
-    public int countCurrentlyWorking(LocalDate date) {
+    public int countCurrentlyWorking(
+            LocalDate date
+    ) {
 
         Integer count =
                 jdbc.queryForObject(
@@ -332,10 +423,14 @@ public class AttendanceRepository {
                         date
                 );
 
-        return count == null ? 0 : count;
+        return count == null
+                ? 0
+                : count;
     }
 
-    public int countLate(LocalDate date) {
+    public int countLate(
+            LocalDate date
+    ) {
 
         Integer count =
                 jdbc.queryForObject(
@@ -349,7 +444,9 @@ public class AttendanceRepository {
                         date
                 );
 
-        return count == null ? 0 : count;
+        return count == null
+                ? 0
+                : count;
     }
 
     private AttendanceRecord map(
@@ -369,21 +466,29 @@ public class AttendanceRepository {
         );
 
         record.setEmployeeNumber(
-                rs.getString("employee_number")
+                rs.getString(
+                        "employee_number"
+                )
         );
+
+        String firstName =
+                rs.getString("first_name");
+
+        String lastName =
+                rs.getString("last_name");
 
         record.setEmployeeName(
                 (
-                        rs.getString("first_name") == null
+                        firstName == null
                                 ? ""
-                                : rs.getString("first_name")
+                                : firstName
                 )
                 + " "
                 +
                 (
-                        rs.getString("last_name") == null
+                        lastName == null
                                 ? ""
-                                : rs.getString("last_name")
+                                : lastName
                 )
         );
 
@@ -391,10 +496,17 @@ public class AttendanceRepository {
                 rs.getString("department")
         );
 
-        record.setAttendanceDate(
-                rs.getDate("attendance_date")
-                        .toLocalDate()
-        );
+        if (
+                rs.getDate(
+                        "attendance_date"
+                ) != null
+        ) {
+            record.setAttendanceDate(
+                    rs.getDate(
+                            "attendance_date"
+                    ).toLocalDate()
+            );
+        }
 
         Timestamp in =
                 rs.getTimestamp("check_in");
@@ -419,100 +531,40 @@ public class AttendanceRepository {
         );
 
         record.setCheckInMethod(
-                rs.getString("check_in_method")
+                rs.getString(
+                        "check_in_method"
+                )
         );
 
         record.setCheckOutMethod(
-                rs.getString("check_out_method")
+                rs.getString(
+                        "check_out_method"
+                )
         );
 
         long session =
-                rs.getLong("qr_session_id");
+                rs.getLong(
+                        "qr_session_id"
+                );
 
         if (!rs.wasNull()) {
-            record.setQrSessionId(session);
+            record.setQrSessionId(
+                    session
+            );
         }
 
         record.setManualCorrection(
-                rs.getBoolean("manual_correction")
+                rs.getBoolean(
+                        "manual_correction"
+                )
         );
 
         record.setCorrectionReason(
-                rs.getString("correction_reason")
+                rs.getString(
+                        "correction_reason"
+                )
         );
 
         return record;
     }
-
-    public Long resolveEmployeeId(
-        String employeeIdentifier
-) {
-
-    if (
-            employeeIdentifier == null ||
-            employeeIdentifier.isBlank()
-    ) {
-        return null;
-    }
-
-    String value =
-            employeeIdentifier.trim();
-
-    List<Long> result =
-            jdbc.query(
-                    """
-                    SELECT TOP 1 id
-                    FROM employees
-                    WHERE employment_status = 'Active'
-                      AND (
-                          employee_number = ?
-                          OR CAST(id AS VARCHAR(50)) = ?
-                      )
-                    """,
-                    (rs, row) ->
-                            rs.getLong("id"),
-                    value,
-                    value
-            );
-
-    return result.isEmpty()
-            ? null
-            : result.get(0);
-}
-
-
-public boolean employeeOnApprovedLeave(
-        String employeeIdentifier,
-        LocalDate date
-) {
-    if (employeeIdentifier == null || employeeIdentifier.isBlank()) {
-        return false;
-    }
-
-    String value = employeeIdentifier.trim();
-
-    Integer count = jdbc.queryForObject(
-            """
-            SELECT COUNT(*)
-            FROM leave_requests lr
-            INNER JOIN employees e
-                ON e.id = lr.employee_id
-            WHERE
-                (
-                    e.employee_number = ?
-                    OR CAST(e.id AS VARCHAR(50)) = ?
-                )
-                AND CAST(lr.start_date AS DATE) <= ?
-                AND CAST(lr.end_date AS DATE) >= ?
-                AND UPPER(lr.status) = 'APPROVED'
-            """,
-            Integer.class,
-            value,
-            value,
-            date,
-            date
-    );
-
-    return count != null && count > 0;
-}
 }
