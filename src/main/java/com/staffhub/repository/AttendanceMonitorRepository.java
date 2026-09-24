@@ -1,5 +1,6 @@
 package com.staffhub.repository;
 
+import com.staffhub.model.AttendanceEvent;
 import com.staffhub.model.AttendanceMonitor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -26,7 +27,7 @@ public class AttendanceMonitorRepository {
                         FROM attendance_monitor
                         ORDER BY id DESC
                         """,
-                        this::map
+                        this::mapMonitor
                 );
 
         return result.isEmpty()
@@ -44,7 +45,7 @@ public class AttendanceMonitorRepository {
                         WHERE active = 1
                         ORDER BY id DESC
                         """,
-                        this::map
+                        this::mapMonitor
                 );
 
         return result.isEmpty()
@@ -263,7 +264,37 @@ public class AttendanceMonitorRepository {
         );
     }
 
-    private AttendanceMonitor map(
+    public List<AttendanceEvent> findEvents(int limit) {
+
+        int safeLimit = Math.max(1, Math.min(limit, 200));
+
+        String sql =
+                """
+                SELECT TOP %d
+                    ae.id,
+                    ae.monitor_id,
+                    ae.attendance_record_id,
+                    ae.employee_id,
+                    ae.action,
+                    ae.event_time,
+                    ae.qr_sequence,
+                    ae.performed_by,
+                    ae.details,
+                    e.employee_number,
+                    CONCAT(e.first_name, ' ', e.last_name) AS employee_name
+                FROM attendance_events ae
+                LEFT JOIN employees e
+                    ON e.id = ae.employee_id
+                ORDER BY ae.event_time DESC, ae.id DESC
+                """.formatted(safeLimit);
+
+        return jdbc.query(
+                sql,
+                this::mapEvent
+        );
+    }
+
+    private AttendanceMonitor mapMonitor(
             java.sql.ResultSet rs,
             int row
     ) throws java.sql.SQLException {
@@ -336,5 +367,77 @@ public class AttendanceMonitorRepository {
         }
 
         return monitor;
+    }
+
+    private AttendanceEvent mapEvent(
+            java.sql.ResultSet rs,
+            int row
+    ) throws java.sql.SQLException {
+
+        AttendanceEvent event =
+                new AttendanceEvent();
+
+        event.setId(
+                rs.getLong("id")
+        );
+
+        long monitorId =
+                rs.getLong("monitor_id");
+
+        if (!rs.wasNull()) {
+            event.setMonitorId(monitorId);
+        }
+
+        long recordId =
+                rs.getLong("attendance_record_id");
+
+        if (!rs.wasNull()) {
+            event.setAttendanceRecordId(recordId);
+        }
+
+        long employeeId =
+                rs.getLong("employee_id");
+
+        if (!rs.wasNull()) {
+            event.setEmployeeId(employeeId);
+        }
+
+        event.setAction(
+                rs.getString("action")
+        );
+
+        Timestamp eventTime =
+                rs.getTimestamp("event_time");
+
+        if (eventTime != null) {
+            event.setEventTime(
+                    eventTime.toLocalDateTime()
+            );
+        }
+
+        int sequence =
+                rs.getInt("qr_sequence");
+
+        if (!rs.wasNull()) {
+            event.setQrSequence(sequence);
+        }
+
+        event.setPerformedBy(
+                rs.getString("performed_by")
+        );
+
+        event.setDetails(
+                rs.getString("details")
+        );
+
+        event.setEmployeeNumber(
+                rs.getString("employee_number")
+        );
+
+        event.setEmployeeName(
+                rs.getString("employee_name")
+        );
+
+        return event;
     }
 }

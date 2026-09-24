@@ -51,7 +51,6 @@ public class AttendanceRepository {
     public AttendanceRecord findTodayByEmployee(
             Long employeeId
     ) {
-
         return findByEmployeeAndDate(
                 employeeId,
                 LocalDate.now()
@@ -74,7 +73,9 @@ public class AttendanceRepository {
                 INNER JOIN employees e
                     ON e.id = a.employee_id
                 WHERE a.employee_id = ?
-                ORDER BY a.attendance_date DESC
+                ORDER BY
+                    a.attendance_date DESC,
+                    a.check_in DESC
                 """,
                 this::map,
                 employeeId
@@ -159,6 +160,7 @@ public class AttendanceRepository {
                     check_out_method = ?,
                     updated_at = SYSDATETIME()
                 WHERE id = ?
+                  AND check_out IS NULL
                 """,
                 Timestamp.valueOf(checkOut),
                 method,
@@ -208,9 +210,37 @@ public class AttendanceRepository {
                         SELECT COUNT(*)
                         FROM employees
                         WHERE id = ?
+                          AND employment_status = 'Active'
                         """,
                         Integer.class,
                         employeeId
+                );
+
+        return count != null && count > 0;
+    }
+
+    public boolean employeeOnApprovedLeave(
+            Long employeeId,
+            LocalDate date
+    ) {
+
+        Integer count =
+                jdbc.queryForObject(
+                        """
+                        SELECT COUNT(*)
+                        FROM leave_requests
+                        WHERE employee_id =
+                            (
+                                SELECT employee_number
+                                FROM employees
+                                WHERE id = ?
+                            )
+                          AND status = 'Approved'
+                          AND ? BETWEEN start_date AND end_date
+                        """,
+                        Integer.class,
+                        employeeId,
+                        date
                 );
 
         return count != null && count > 0;
@@ -253,9 +283,7 @@ public class AttendanceRepository {
         return count == null ? 0 : count;
     }
 
-    public int countAttended(
-            LocalDate date
-    ) {
+    public int countAttended(LocalDate date) {
 
         Integer count =
                 jdbc.queryForObject(
@@ -272,9 +300,7 @@ public class AttendanceRepository {
         return count == null ? 0 : count;
     }
 
-    public int countCheckedOut(
-            LocalDate date
-    ) {
+    public int countCheckedOut(LocalDate date) {
 
         Integer count =
                 jdbc.queryForObject(
@@ -291,9 +317,7 @@ public class AttendanceRepository {
         return count == null ? 0 : count;
     }
 
-    public int countCurrentlyWorking(
-            LocalDate date
-    ) {
+    public int countCurrentlyWorking(LocalDate date) {
 
         Integer count =
                 jdbc.queryForObject(
@@ -311,9 +335,7 @@ public class AttendanceRepository {
         return count == null ? 0 : count;
     }
 
-    public int countLate(
-            LocalDate date
-    ) {
+    public int countLate(LocalDate date) {
 
         Integer count =
                 jdbc.queryForObject(
@@ -352,16 +374,16 @@ public class AttendanceRepository {
 
         record.setEmployeeName(
                 (
-                    rs.getString("first_name") == null
-                        ? ""
-                        : rs.getString("first_name")
+                        rs.getString("first_name") == null
+                                ? ""
+                                : rs.getString("first_name")
                 )
                 + " "
                 +
                 (
-                    rs.getString("last_name") == null
-                        ? ""
-                        : rs.getString("last_name")
+                        rs.getString("last_name") == null
+                                ? ""
+                                : rs.getString("last_name")
                 )
         );
 

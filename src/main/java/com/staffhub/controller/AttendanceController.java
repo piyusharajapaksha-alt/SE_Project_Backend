@@ -1,8 +1,10 @@
 package com.staffhub.controller;
 
+import com.staffhub.model.AttendanceEvent;
 import com.staffhub.model.AttendanceMonitor;
 import com.staffhub.model.AttendanceRecord;
 import com.staffhub.service.AttendanceService;
+import com.staffhub.repository.AttendanceMonitorRepository;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -16,14 +18,19 @@ public class AttendanceController {
 
     private final AttendanceService service;
 
+    private final AttendanceMonitorRepository monitorRepository;
+
     public AttendanceController(
-            AttendanceService service
+            AttendanceService service,
+            AttendanceMonitorRepository monitorRepository
     ) {
         this.service = service;
+        this.monitorRepository = monitorRepository;
     }
 
     @GetMapping("/monitor")
     public AttendanceMonitor monitor() {
+
         return service.getMonitor();
     }
 
@@ -34,7 +41,10 @@ public class AttendanceController {
 
         return service.activate(
                 body.get("code"),
-                body.get("user"),
+                body.getOrDefault(
+                        "user",
+                        "SYSTEM"
+                ),
                 body.getOrDefault(
                         "type",
                         "MANUAL"
@@ -43,7 +53,7 @@ public class AttendanceController {
     }
 
     @PostMapping("/monitor/deactivate")
-    public void deactivate(
+    public Map<String, String> deactivate(
             @RequestBody(required = false)
             Map<String, String> body
     ) {
@@ -56,14 +66,28 @@ public class AttendanceController {
                                 "SYSTEM"
                         );
 
+        String type =
+                body == null
+                        ? "MANUAL"
+                        : body.getOrDefault(
+                                "type",
+                                "MANUAL"
+                        );
+
         service.deactivate(
                 user,
-                "MANUAL"
+                type
+        );
+
+        return Map.of(
+                "message",
+                "Attendance monitor deactivated successfully"
         );
     }
 
     @PostMapping("/monitor/rotate")
     public AttendanceMonitor rotate() {
+
         return service.rotateQr();
     }
 
@@ -72,10 +96,20 @@ public class AttendanceController {
             @RequestBody Map<String, Object> body
     ) {
 
+        if (body == null
+                || body.get("employeeId") == null
+                || body.get("token") == null) {
+
+            throw new IllegalArgumentException(
+                    "employeeId and token are required"
+            );
+        }
+
         Long employeeId =
                 Long.valueOf(
-                        body.get("employeeId")
-                                .toString()
+                        body.get(
+                                "employeeId"
+                        ).toString()
                 );
 
         String token =
@@ -139,7 +173,7 @@ public class AttendanceController {
     }
 
     @PutMapping("/records/{id}")
-    public void correct(
+    public Map<String, String> correct(
             @PathVariable Long id,
             @RequestBody Map<String, String> body
     ) {
@@ -150,6 +184,32 @@ public class AttendanceController {
                 body.get("checkOut"),
                 body.get("status"),
                 body.get("reason")
+        );
+
+        return Map.of(
+                "message",
+                "Attendance record corrected successfully"
+        );
+    }
+
+    /**
+     * Activity/audit log for Attendance Management.
+     *
+     * Example:
+     * GET /api/attendance/events
+     * GET /api/attendance/events?limit=50
+     */
+    @GetMapping("/events")
+    public List<AttendanceEvent> events(
+            @RequestParam(
+                    required = false,
+                    defaultValue = "50"
+            )
+            int limit
+    ) {
+
+        return monitorRepository.findEvents(
+                limit
         );
     }
 }

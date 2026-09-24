@@ -9,7 +9,6 @@ import org.springframework.stereotype.Service;
 import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -30,7 +29,6 @@ public class AttendanceService {
             AttendanceRepository attendanceRepository,
             AttendanceMonitorRepository monitorRepository
     ) {
-
         this.attendanceRepository =
                 attendanceRepository;
 
@@ -38,6 +36,12 @@ public class AttendanceService {
                 monitorRepository;
     }
 
+    /**
+     * Returns the current monitor.
+     *
+     * If the QR has expired while the monitor is active,
+     * automatically creates a new QR token.
+     */
     public synchronized AttendanceMonitor getMonitor() {
 
         AttendanceMonitor monitor =
@@ -53,9 +57,24 @@ public class AttendanceService {
                     monitorRepository.getMonitor();
         }
 
+        if (monitor != null
+                && monitor.isActive()
+                && qrExpired(monitor)) {
+
+            monitor =
+                    rotateQrInternal(
+                            monitor,
+                            "SYSTEM",
+                            true
+                    );
+        }
+
         return monitor;
     }
 
+    /**
+     * Manual activation using the temporary 6 digit code.
+     */
     public synchronized AttendanceMonitor activate(
             String code,
             String user,
@@ -77,44 +96,108 @@ public class AttendanceService {
             );
         }
 
-        if (!monitor.getActivationCode()
-                .equals(code.trim())) {
-
+        if (!code.trim().equals(
+                monitor.getActivationCode()
+        )) {
             throw new IllegalArgumentException(
                     "Invalid attendance activation code"
             );
         }
 
+        return activateInternal(
+                monitor,
+                user,
+                type
+        );
+    }
+
+    /**
+     * Internal activation used by automatic schedules.
+     *
+     * Does NOT require the manual 6 digit activation code.
+     */
+    public synchronized AttendanceMonitor activateScheduled(
+            String scheduleName
+    ) {
+
+        AttendanceMonitor monitor =
+                getMonitor();
+
+        if (monitor.isActive()) {
+            return monitor;
+        }
+
+        String user =
+                scheduleName == null
+                        || scheduleName.isBlank()
+                        ? "SCHEDULE"
+                        : "SCHEDULE:" + scheduleName;
+
+        return activateInternal(
+                monitor,
+                user,
+                "SCHEDULE"
+        );
+    }
+
+    private AttendanceMonitor activateInternal(
+            AttendanceMonitor monitor,
+            String user,
+            String type
+    ) {
+
         String activationType =
                 type == null || type.isBlank()
                         ? "MANUAL"
-                        : type.toUpperCase();
+                        : type.trim().toUpperCase();
+
+        String activatedBy =
+                user == null || user.isBlank()
+                        ? "SYSTEM"
+                        : user;
 
         LocalDateTime now =
                 LocalDateTime.now();
 
+        String token =
+                generateQrToken();
+
         monitorRepository.activate(
                 monitor.getId(),
-                user,
+                activatedBy,
                 activationType,
-                generateQrToken(),
+                token,
                 1,
                 now,
                 now.plusSeconds(QR_SECONDS)
         );
 
-        monitor =
-                monitorRepository.getMonitor();
+        Long sessionId =
+                monitorRepository.createSession(
+                        monitor.getId(),
+                        activationType,
+                        activatedBy
+                );
 
-        monitorRepository.createSession(
+        monitorRepository.logEvent(
                 monitor.getId(),
-                activationType,
-                user
+                null,
+                null,
+                "MONITOR_ACTIVATED",
+                1,
+                activatedBy,
+                "Attendance monitor activated as "
+                        + activationType
+                        + ". Session ID: "
+                        + sessionId
         );
 
         return monitorRepository.getMonitor();
     }
 
+    /**
+     * Manual or scheduled deactivation.
+     */
     public synchronized void deactivate(
             String user,
             String type
@@ -127,6 +210,16 @@ public class AttendanceService {
             return;
         }
 
+        String performedBy =
+                user == null || user.isBlank()
+                        ? "SYSTEM"
+                        : user;
+
+        String deactivationType =
+                type == null || type.isBlank()
+                        ? "MANUAL"
+                        : type.trim().toUpperCase();
+
         Long sessionId =
                 monitorRepository.getOpenSessionId(
                         monitor.getId()
@@ -136,12 +229,21 @@ public class AttendanceService {
 
             monitorRepository.closeSession(
                     sessionId,
-                    user,
-                    type == null
-                            ? "MANUAL"
-                            : type
+                    performedBy,
+                    deactivationType
             );
         }
+
+        monitorRepository.logEvent(
+                monitor.getId(),
+                null,
+                null,
+                "MONITOR_DEACTIVATED",
+                monitor.getQrSequence(),
+                performedBy,
+                "Attendance monitor deactivated as "
+                        + deactivationType
+        );
 
         monitorRepository.deactivate(
                 monitor.getId(),
@@ -149,6 +251,9 @@ public class AttendanceService {
         );
     }
 
+    /**
+     * Rotate QR manually.
+     */
     public synchronized AttendanceMonitor rotateQr() {
 
         AttendanceMonitor monitor =
@@ -160,20 +265,54 @@ public class AttendanceService {
             );
         }
 
+        return rotateQrInternal(
+                monitor,
+                "SYSTEM",
+                false
+        );
+    }
+
+    private AttendanceMonitor rotateQrInternal(
+            AttendanceMonitor monitor,
+            String performedBy,
+            boolean automatic
+    ) {
+
         LocalDateTime now =
                 LocalDateTime.now();
+
+        int sequence =
+                monitor.getQrSequence() + 1;
 
         monitorRepository.rotate(
                 monitor.getId(),
                 generateQrToken(),
-                monitor.getQrSequence() + 1,
+                sequence,
                 now,
                 now.plusSeconds(QR_SECONDS)
+        );
+
+        monitorRepository.logEvent(
+                monitor.getId(),
+                null,
+                null,
+                "QR_ROTATED",
+                sequence,
+                performedBy,
+                automatic
+                        ? "QR automatically rotated after expiration"
+                        : "QR manually rotated"
         );
 
         return monitorRepository.getMonitor();
     }
 
+    /**
+     * Employee scans QR.
+     *
+     * First successful scan = CHECK_IN.
+     * Second successful scan = CHECK_OUT.
+     */
     public synchronized AttendanceRecord scan(
             Long employeeId,
             String token
@@ -191,11 +330,23 @@ public class AttendanceService {
             );
         }
 
-        if (!attendanceRepository
-                .employeeExists(employeeId)) {
-
+        if (!attendanceRepository.employeeExists(employeeId)) {
             throw new IllegalArgumentException(
-                    "Employee does not exist"
+                    "Employee does not exist or is inactive"
+            );
+        }
+
+        LocalDate today =
+                LocalDate.now();
+
+        if (attendanceRepository
+                .employeeOnApprovedLeave(
+                        employeeId,
+                        today
+                )) {
+
+            throw new IllegalStateException(
+                    "Employee is on approved leave today"
             );
         }
 
@@ -208,35 +359,26 @@ public class AttendanceService {
             );
         }
 
-        if (
-                monitor.getCurrentQrToken() == null
-                ||
-                !monitor.getCurrentQrToken()
-                        .equals(token)
-        ) {
+        LocalDateTime now =
+                LocalDateTime.now();
+
+        if (monitor.getCurrentQrToken() == null
+                || !monitor.getCurrentQrToken()
+                .equals(token)) {
 
             throw new IllegalArgumentException(
                     "QR code is invalid or expired"
             );
         }
 
-        LocalDateTime now =
-                LocalDateTime.now();
-
-        if (
-                monitor.getQrExpiresAt() == null
-                ||
-                monitor.getQrExpiresAt()
-                        .isBefore(now)
-        ) {
+        if (monitor.getQrExpiresAt() == null
+                || !monitor.getQrExpiresAt()
+                .isAfter(now)) {
 
             throw new IllegalArgumentException(
-                    "QR code has expired"
+                    "QR code has expired. Please scan the new QR code."
             );
         }
-
-        LocalDate today =
-                LocalDate.now();
 
         AttendanceRecord existing =
                 attendanceRepository
@@ -250,12 +392,16 @@ public class AttendanceService {
                         monitor.getId()
                 );
 
-        if (existing == null) {
+        if (sessionId == null) {
+            throw new IllegalStateException(
+                    "Attendance monitor session is not available"
+            );
+        }
 
-            String status =
-                    calculateStatus(
-                            monitor
-                    );
+        /*
+         * CHECK IN
+         */
+        if (existing == null) {
 
             Long id =
                     attendanceRepository.create(
@@ -264,7 +410,7 @@ public class AttendanceService {
                             now,
                             "QR",
                             sessionId,
-                            status
+                            "PRESENT"
                     );
 
             AttendanceRecord created =
@@ -284,11 +430,21 @@ public class AttendanceService {
                     "Employee checked in using QR"
             );
 
-            rotateQr();
+            /*
+             * Immediately rotate after successful scan.
+             */
+            rotateQrInternal(
+                    monitor,
+                    employeeId.toString(),
+                    false
+            );
 
             return created;
         }
 
+        /*
+         * Already checked out.
+         */
         if (existing.getCheckOut() != null) {
 
             throw new IllegalStateException(
@@ -296,6 +452,9 @@ public class AttendanceService {
             );
         }
 
+        /*
+         * CHECK OUT
+         */
         attendanceRepository.updateCheckOut(
                 existing.getId(),
                 now,
@@ -319,7 +478,14 @@ public class AttendanceService {
                 "Employee checked out using QR"
         );
 
-        rotateQr();
+        /*
+         * Immediately rotate after successful scan.
+         */
+        rotateQrInternal(
+                monitor,
+                employeeId.toString(),
+                false
+        );
 
         return updated;
     }
@@ -429,32 +595,20 @@ public class AttendanceService {
         );
     }
 
-    private String calculateStatus(
+    private boolean qrExpired(
             AttendanceMonitor monitor
     ) {
 
-        LocalTime now =
-                LocalTime.now();
-
-        /*
-         * Default:
-         * first scan is PRESENT.
-         *
-         * Schedule-specific lateness is handled
-         * by the schedule system.
-         */
-        return "PRESENT";
+        return monitor.getQrExpiresAt() == null
+                || !monitor.getQrExpiresAt()
+                .isAfter(LocalDateTime.now());
     }
 
     private LocalDateTime parseDateTime(
             String value
     ) {
 
-        if (
-                value == null
-                ||
-                value.isBlank()
-        ) {
+        if (value == null || value.isBlank()) {
             return null;
         }
 

@@ -10,10 +10,18 @@ public class AttendanceSchedule {
 
     private String scheduleName;
 
+    /*
+     * ONCE   = specific date
+     * DAILY  = every day
+     * WEEKLY = selected day of week
+     */
     private String scheduleType;
 
     private LocalDate scheduleDate;
 
+    /*
+     * MONDAY, TUESDAY, etc.
+     */
     private String dayOfWeek;
 
     private LocalTime startTime;
@@ -27,6 +35,9 @@ public class AttendanceSchedule {
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
+
+    public AttendanceSchedule() {
+    }
 
     public Long getId() {
         return id;

@@ -5,6 +5,7 @@ import com.staffhub.repository.AttendanceScheduleRepository;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/attendance/schedules")
@@ -21,7 +22,25 @@ public class AttendanceScheduleController {
 
     @GetMapping
     public List<AttendanceSchedule> all() {
+
         return repository.findAll();
+    }
+
+    @GetMapping("/{id}")
+    public AttendanceSchedule get(
+            @PathVariable Long id
+    ) {
+
+        AttendanceSchedule schedule =
+                repository.findById(id);
+
+        if (schedule == null) {
+            throw new IllegalArgumentException(
+                    "Attendance schedule not found"
+            );
+        }
+
+        return schedule;
     }
 
     @PostMapping
@@ -31,7 +50,16 @@ public class AttendanceScheduleController {
 
         repository.create(schedule);
 
-        return schedule;
+        return repository.findAll()
+                .stream()
+                .filter(s ->
+                        s.getScheduleName()
+                                .equals(
+                                        schedule.getScheduleName()
+                                )
+                )
+                .findFirst()
+                .orElse(schedule);
     }
 
     @PutMapping("/{id}")
@@ -47,14 +75,19 @@ public class AttendanceScheduleController {
 
         schedule.setId(id);
 
-        return schedule;
+        return repository.findById(id);
     }
 
     @DeleteMapping("/{id}")
-    public void delete(
+    public Map<String, String> delete(
             @PathVariable Long id
     ) {
 
         repository.delete(id);
+
+        return Map.of(
+                "message",
+                "Attendance schedule deleted successfully"
+        );
     }
 }
