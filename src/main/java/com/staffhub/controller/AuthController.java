@@ -2,6 +2,9 @@ package com.staffhub.controller;
 
 import com.staffhub.model.Employee;
 import com.staffhub.repository.AuthRepository;
+import com.staffhub.service.OwnerRegistrationService;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -11,229 +14,132 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
-import org.springframework.web.bind.annotation.*;
-
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-
 import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
-
     private final AuthenticationManager authenticationManager;
     private final AuthRepository authRepository;
-
+    private final OwnerRegistrationService ownerRegistrationService;
     private final SecurityContextRepository securityContextRepository =
             new HttpSessionSecurityContextRepository();
 
-    public AuthController(
-            AuthenticationManager authenticationManager,
-            AuthRepository authRepository
-    ) {
+    public AuthController(AuthenticationManager authenticationManager,
+                          AuthRepository authRepository,
+                          OwnerRegistrationService ownerRegistrationService) {
         this.authenticationManager = authenticationManager;
         this.authRepository = authRepository;
+        this.ownerRegistrationService = ownerRegistrationService;
     }
-
-    // ============================================================
-    // CSRF
-    // ============================================================
 
     @GetMapping("/csrf")
     public ResponseEntity<Void> csrf(CsrfToken token) {
-
-        // Calling getToken() forces Spring Security to create
-        // the CSRF token and send the XSRF-TOKEN cookie.
         token.getToken();
-
         return ResponseEntity.noContent().build();
     }
 
-    // ============================================================
-    // LOGIN
-    // ============================================================
-
     @PostMapping("/login")
-    public ResponseEntity<?> login(
-            @RequestBody LoginRequest request,
-            HttpServletRequest httpRequest,
-            HttpServletResponse httpResponse
-    ) {
-
-        if (request.email() == null ||
-                request.email().isBlank() ||
-                request.password() == null ||
-                request.password().isBlank()) {
-
-            return ResponseEntity
-                    .badRequest()
-                    .body(new ErrorResponse(
-                            "Email and password are required"
-                    ));
-        }
+    public ResponseEntity<?> login(@RequestBody LoginRequest request,
+                                   HttpServletRequest req,
+                                   HttpServletResponse res) {
+        if (request.email() == null || request.email().isBlank()
+                || request.password() == null || request.password().isBlank())
+            return ResponseEntity.badRequest().body(new ErrorResponse("Email and password are required"));
 
         try {
-
-            Authentication authentication =
-                    authenticationManager.authenticate(
-                            new UsernamePasswordAuthenticationToken(
-                                    request.email().trim().toLowerCase(),
-                                    request.password()
-                            )
-                    );
-
-            SecurityContext context =
-                    SecurityContextHolder.createEmptyContext();
-
-            context.setAuthentication(authentication);
-
-            SecurityContextHolder.setContext(context);
-
-            securityContextRepository.saveContext(
-                    context,
-                    httpRequest,
-                    httpResponse
-            );
-
+            Authentication authentication = authenticate(request.email(), request.password());
+            saveAuthentication(authentication, req, res);
             AuthRepository.AuthUserRecord account =
-                    authRepository.findByEmail(
-                            request.email().trim().toLowerCase()
-                    );
-
-            if (account == null) {
-
-                SecurityContextHolder.clearContext();
-
-                return ResponseEntity
-                        .status(HttpStatus.UNAUTHORIZED)
-                        .body(new ErrorResponse(
-                                "Invalid email or password"
-                        ));
-            }
-
-            Employee employee = account.employee();
-
-            AuthUserResponse response =
-                    new AuthUserResponse(
-                            account.authId(),
-                            employee.getId(),
-                            employee.getEmail(),
-                            employee.getRole(),
-                            employee.getEmployeeNumber(),
-                            employee.getFirstName(),
-                            employee.getLastName(),
-                            employee.getDepartment(),
-                            employee.getPosition(),
-                            employee.getPhone(),
-                            employee.getEmploymentStatus()
-                    );
-
-            return ResponseEntity.ok(response);
-
+                    authRepository.findByEmail(request.email().trim().toLowerCase());
+            if (account == null) return unauthorized();
+            return ResponseEntity.ok(toResponse(account));
         } catch (Exception ex) {
-
-            return ResponseEntity
-                    .status(HttpStatus.UNAUTHORIZED)
-                    .body(new ErrorResponse(
-                            "Invalid email or password"
-                    ));
+            return unauthorized();
         }
     }
 
-    // ============================================================
-    // CURRENT USER
-    // ============================================================
+    @PostMapping("/register")
+    public ResponseEntity<?> register(@RequestBody OwnerRegistrationService.RegisterRequest request,
+                                      HttpServletRequest req,
+                                      HttpServletResponse res) {
+        try {
+            OwnerRegistrationService.RegistrationResult result =
+                    ownerRegistrationService.register(request);
+
+            Authentication authentication = authenticate(
+                    result.ownerEmail(), request.password());
+            saveAuthentication(authentication, req, res);
+
+            AuthRepository.AuthUserRecord account =
+                    authRepository.findByEmail(result.ownerEmail());
+
+            return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(account));
+        } catch (OwnerRegistrationService.RegistrationException ex) {
+            return ResponseEntity.badRequest().body(new ErrorResponse(ex.getMessage()));
+        } catch (Exception ex) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ErrorResponse("Registration failed. Please try again."));
+        }
+    }
 
     @GetMapping("/me")
     public ResponseEntity<?> me(Authentication authentication) {
-
-        if (authentication == null ||
-                !authentication.isAuthenticated()) {
-
-            return ResponseEntity
-                    .status(HttpStatus.UNAUTHORIZED)
-                    .body(new ErrorResponse(
-                            "Not authenticated"
-                    ));
-        }
+        if (authentication == null || !authentication.isAuthenticated())
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse("Not authenticated"));
 
         AuthRepository.AuthUserRecord account =
-                authRepository.findByEmail(
-                        authentication.getName()
-                );
+                authRepository.findByEmail(authentication.getName());
 
-        if (account == null || !account.enabled()) {
+        if (account == null || !account.enabled())
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse("Authenticated user no longer exists"));
 
-            return ResponseEntity
-                    .status(HttpStatus.UNAUTHORIZED)
-                    .body(new ErrorResponse(
-                            "Authenticated user no longer exists"
-                    ));
-        }
-
-        Employee employee = account.employee();
-
-        return ResponseEntity.ok(
-                new AuthUserResponse(
-                        account.authId(),
-                        employee.getId(),
-                        employee.getEmail(),
-                        employee.getRole(),
-                        employee.getEmployeeNumber(),
-                        employee.getFirstName(),
-                        employee.getLastName(),
-                        employee.getDepartment(),
-                        employee.getPosition(),
-                        employee.getPhone(),
-                        employee.getEmploymentStatus()
-                )
-        );
+        return ResponseEntity.ok(toResponse(account));
     }
 
-    // ============================================================
-    // LOGOUT
-    // ============================================================
-
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(
-            HttpServletRequest request
-    ) {
-
+    public ResponseEntity<Void> logout(HttpServletRequest request) {
         request.getSession(false);
-
         SecurityContextHolder.clearContext();
-
         return ResponseEntity.noContent().build();
     }
 
-    // ============================================================
-    // REQUEST / RESPONSE RECORDS
-    // ============================================================
-
-    public record LoginRequest(
-            String email,
-            String password
-    ) {
+    private Authentication authenticate(String email, String password) {
+        return authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(
+                        email.trim().toLowerCase(), password));
     }
 
-    public record ErrorResponse(
-            String message
-    ) {
+    private void saveAuthentication(Authentication authentication,
+                                    HttpServletRequest req,
+                                    HttpServletResponse res) {
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(authentication);
+        SecurityContextHolder.setContext(context);
+        securityContextRepository.saveContext(context, req, res);
     }
 
+    private AuthUserResponse toResponse(AuthRepository.AuthUserRecord account) {
+        Employee e = account.employee();
+        return new AuthUserResponse(
+                account.authId(), e.getId(), e.getEmail(), e.getRole(),
+                e.getEmployeeNumber(), e.getFirstName(), e.getLastName(),
+                e.getDepartment(), e.getPosition(), e.getPhone(),
+                e.getEmploymentStatus());
+    }
+
+    private ResponseEntity<ErrorResponse> unauthorized() {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new ErrorResponse("Invalid email or password"));
+    }
+
+    public record LoginRequest(String email, String password) {}
+    public record ErrorResponse(String message) {}
     public record AuthUserResponse(
-            Long id,
-            Long employeeId,
-            String email,
-            String role,
-            String employeeNumber,
-            String firstName,
-            String lastName,
-            String department,
-            String position,
-            String phone,
-            String status
-    ) {
-    }
+            Long id, Long employeeId, String email, String role,
+            String employeeNumber, String firstName, String lastName,
+            String department, String position, String phone, String status) {}
 }

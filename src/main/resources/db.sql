@@ -998,3 +998,41 @@ CREATE TABLE staffhub_auth_users (
         FOREIGN KEY (employee_id)
         REFERENCES employees(id)
 );
+
+USE StaffHub;
+GO
+
+IF OBJECT_ID('dbo.companies', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.companies (
+        id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+        company_code VARCHAR(50) NOT NULL,
+        company_name VARCHAR(200) NOT NULL,
+        email VARCHAR(150) NOT NULL,
+        phone VARCHAR(30) NULL,
+        address VARCHAR(MAX) NULL,
+        industry VARCHAR(100) NULL,
+        status VARCHAR(30) NOT NULL CONSTRAINT DF_companies_status DEFAULT 'Active',
+        owner_employee_id BIGINT NOT NULL,
+        created_at DATETIME2 NOT NULL CONSTRAINT DF_companies_created_at DEFAULT SYSDATETIME(),
+        updated_at DATETIME2 NULL,
+
+        CONSTRAINT UQ_companies_company_code UNIQUE (company_code),
+        CONSTRAINT UQ_companies_email UNIQUE (email),
+        CONSTRAINT UQ_companies_owner UNIQUE (owner_employee_id),
+        CONSTRAINT FK_companies_owner
+            FOREIGN KEY (owner_employee_id) REFERENCES dbo.employees(id)
+    );
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE name = 'IX_companies_owner_employee_id'
+      AND object_id = OBJECT_ID('dbo.companies')
+)
+BEGIN
+    CREATE INDEX IX_companies_owner_employee_id
+        ON dbo.companies(owner_employee_id);
+END;
+GO
