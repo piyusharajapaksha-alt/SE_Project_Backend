@@ -8,12 +8,13 @@ import org.springframework.security.authentication.dao.DaoAuthenticationProvider
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
-import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 import org.springframework.http.HttpStatus;
 
 @Configuration
@@ -71,12 +72,49 @@ public class SecurityConfig {
     }
 
     // ==========================================================
+    // SECURITY CONTEXT REPOSITORY
+    // ==========================================================
+
+    @Bean
+    public SecurityContextRepository securityContextRepository() {
+
+        return new HttpSessionSecurityContextRepository();
+    }
+
+    // ==========================================================
+    // CSRF TOKEN REPOSITORY
+    // ==========================================================
+    //
+    // StaffHub is a React SPA.
+    //
+    // We keep the CSRF token in the HTTP session and expose the
+    // token through /api/auth/csrf.
+    //
+    // The React application then sends the token in:
+    //
+    // X-XSRF-TOKEN
+    //
+    // for POST / PUT / PATCH / DELETE requests.
+    //
+    // This avoids depending on JavaScript reading a backend
+    // cookie across different frontend/backend origins.
+    // ==========================================================
+
+    @Bean
+    public HttpSessionCsrfTokenRepository csrfTokenRepository() {
+
+        return new HttpSessionCsrfTokenRepository();
+    }
+
+    // ==========================================================
     // SECURITY FILTER CHAIN
     // ==========================================================
 
     @Bean
     public SecurityFilterChain securityFilterChain(
-            HttpSecurity http
+            HttpSecurity http,
+            SecurityContextRepository securityContextRepository,
+            HttpSessionCsrfTokenRepository csrfTokenRepository
     ) throws Exception {
 
         http
@@ -90,29 +128,19 @@ public class SecurityConfig {
                 // ------------------------------------------------
                 // CSRF
                 // ------------------------------------------------
-                //
-                // StaffHub uses custom JSON authentication endpoints.
-                //
-                // Authentication endpoints are excluded because:
-                //
-                // POST /api/auth/login
-                // POST /api/auth/register
-                // POST /api/auth/logout
-                //
-                // are handled directly by AuthController.
-                //
-                // All other application APIs remain CSRF protected.
-                // ------------------------------------------------
 
                 .csrf(csrf -> csrf
 
                         .csrfTokenRepository(
-                                CookieCsrfTokenRepository
-                                        .withHttpOnlyFalse()
+                                csrfTokenRepository
                         )
 
+                        // Authentication endpoints are intentionally
+                        // excluded because login/register create the
+                        // authenticated session.
                         .ignoringRequestMatchers(
-                                "/api/auth/**"
+                                "/api/auth/login",
+                                "/api/auth/register"
                         )
                 )
 
@@ -126,16 +154,15 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/login",
                                 "/api/auth/register",
-                                "/api/auth/logout",
                                 "/api/auth/csrf"
                         ).permitAll()
 
-                        // Everything else requires login
+                        // Everything else requires authentication
                         .anyRequest().authenticated()
                 )
 
                 // ------------------------------------------------
-                // CUSTOM JSON AUTH
+                // DISABLE DEFAULT LOGIN MECHANISMS
                 // ------------------------------------------------
 
                 .formLogin(form -> form.disable())
@@ -143,22 +170,24 @@ public class SecurityConfig {
                 .httpBasic(basic -> basic.disable())
 
                 // ------------------------------------------------
-                // RETURN 401 FOR UNAUTHENTICATED API REQUESTS
-                // ------------------------------------------------
-                //
-                // This changes:
-                //
-                // /api/auth/me -> 403
-                //
-                // into:
-                //
-                // /api/auth/me -> 401
-                //
-                // when nobody is logged in.
+                // SECURITY CONTEXT
                 // ------------------------------------------------
 
-                .exceptionHandling(exception -> exception
-                        .authenticationEntryPoint(
+                .securityContext(securityContext ->
+
+                        securityContext
+                                .securityContextRepository(
+                                        securityContextRepository
+                                )
+                )
+
+                // ------------------------------------------------
+                // UNAUTHENTICATED API RESPONSE
+                // ------------------------------------------------
+
+                .exceptionHandling(exception ->
+
+                        exception.authenticationEntryPoint(
                                 new HttpStatusEntryPoint(
                                         HttpStatus.UNAUTHORIZED
                                 )
