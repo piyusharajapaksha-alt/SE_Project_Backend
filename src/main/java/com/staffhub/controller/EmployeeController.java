@@ -2,14 +2,11 @@ package com.staffhub.controller;
 
 import com.staffhub.model.Employee;
 import com.staffhub.service.EmployeeService;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -19,48 +16,173 @@ public class EmployeeController {
 
     private final EmployeeService employeeService;
 
-    public EmployeeController(EmployeeService employeeService) {
-        this.employeeService = employeeService;
+    public EmployeeController(
+            EmployeeService employeeService
+    ) {
+        this.employeeService =
+                employeeService;
     }
 
-    // Get all employees
+    // ==========================================================
+    // GET ALL
+    // ==========================================================
+
     @GetMapping
     public List<Employee> getAllEmployees() {
+
         return employeeService.getAllEmployees();
     }
 
-    // Get one employee by ID
+    // ==========================================================
+    // GET BY ID
+    // ==========================================================
+
     @GetMapping("/{id}")
-    public Employee getEmployeeById(@PathVariable Long id) {
+    public Employee getEmployeeById(
+            @PathVariable Long id
+    ) {
+
         return employeeService.getEmployeeById(id);
     }
 
-    // Create a new employee
+    // ==========================================================
+    // CREATE
+    // ==========================================================
+
     @PostMapping
-    public String createEmployee(@RequestBody Employee employee) {
+    public ResponseEntity<?> createEmployee(
+            @RequestBody Employee employee
+    ) {
 
-        employeeService.createEmployee(employee);
+        try {
 
-        return "Employee created successfully";
+            Long employeeId =
+                    employeeService.createEmployee(
+                            employee
+                    );
+
+            return ResponseEntity
+                    .status(HttpStatus.CREATED)
+                    .body(
+                            new EmployeeCreateResponse(
+                                    employeeId,
+                                    employee.getEmail(),
+                                    "Employee created successfully. "
+                                            + "Login account created with the temporary password."
+                            )
+                    );
+
+        } catch (IllegalArgumentException ex) {
+
+            return ResponseEntity
+                    .badRequest()
+                    .body(
+                            new ErrorResponse(
+                                    ex.getMessage()
+                            )
+                    );
+
+        } catch (Exception ex) {
+
+            return ResponseEntity
+                    .status(
+                            HttpStatus.INTERNAL_SERVER_ERROR
+                    )
+                    .body(
+                            new ErrorResponse(
+                                    "Employee creation failed."
+                            )
+                    );
+        }
     }
 
-    // Update an existing employee
+    // ==========================================================
+    // UPDATE
+    // ==========================================================
+
     @PutMapping("/{id}")
-    public String updateEmployee(
+    public ResponseEntity<?> updateEmployee(
             @PathVariable Long id,
-            @RequestBody Employee employee) {
+            @RequestBody Employee employee
+    ) {
 
-        employeeService.updateEmployee(id, employee);
+        try {
 
-        return "Employee updated successfully";
+            employeeService.updateEmployee(
+                    id,
+                    employee
+            );
+
+            return ResponseEntity.ok(
+                    "Employee updated successfully"
+            );
+
+        } catch (IllegalArgumentException ex) {
+
+            return ResponseEntity
+                    .badRequest()
+                    .body(
+                            new ErrorResponse(
+                                    ex.getMessage()
+                            )
+                    );
+
+        } catch (Exception ex) {
+
+            return ResponseEntity
+                    .status(
+                            HttpStatus.INTERNAL_SERVER_ERROR
+                    )
+                    .body(
+                            new ErrorResponse(
+                                    "Employee update failed."
+                            )
+                    );
+        }
     }
 
-    // Delete an employee
+    // ==========================================================
+    // DELETE
+    // ==========================================================
+
     @DeleteMapping("/{id}")
-    public String deleteEmployee(@PathVariable Long id) {
+    public ResponseEntity<?> deleteEmployee(
+            @PathVariable Long id
+    ) {
 
-        employeeService.deleteEmployee(id);
+        try {
 
-        return "Employee deleted successfully";
+            employeeService.deleteEmployee(id);
+
+            return ResponseEntity.ok(
+                    "Employee deleted successfully"
+            );
+
+        } catch (Exception ex) {
+
+            return ResponseEntity
+                    .status(
+                            HttpStatus.INTERNAL_SERVER_ERROR
+                    )
+                    .body(
+                            new ErrorResponse(
+                                    "Employee deletion failed."
+                            )
+                    );
+        }
     }
+
+    // ==========================================================
+    // RESPONSE RECORDS
+    // ==========================================================
+
+    public record EmployeeCreateResponse(
+            Long employeeId,
+            String email,
+            String message
+    ) {}
+
+    public record ErrorResponse(
+            String message
+    ) {}
 }

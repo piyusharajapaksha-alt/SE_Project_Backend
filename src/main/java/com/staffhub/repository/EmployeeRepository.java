@@ -2,8 +2,12 @@ package com.staffhub.repository;
 
 import com.staffhub.model.Employee;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
+import java.sql.PreparedStatement;
+import java.sql.Statement;
 import java.util.List;
 
 @Repository
@@ -15,7 +19,10 @@ public class EmployeeRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    // Get all employees
+    // ==========================================================
+    // GET ALL EMPLOYEES
+    // ==========================================================
+
     public List<Employee> findAll() {
 
         String sql = "SELECT * FROM employees ORDER BY id";
@@ -79,7 +86,10 @@ public class EmployeeRepository {
         });
     }
 
-    // Get one employee by ID
+    // ==========================================================
+    // GET EMPLOYEE BY ID
+    // ==========================================================
+
     public Employee findById(Long id) {
 
         String sql = "SELECT * FROM employees WHERE id = ?";
@@ -147,8 +157,11 @@ public class EmployeeRepository {
         );
     }
 
-    // Create a new employee
-    public int save(Employee employee) {
+    // ==========================================================
+    // CREATE EMPLOYEE
+    // ==========================================================
+
+    public Long save(Employee employee) {
 
         String sql = """
                 INSERT INTO employees (
@@ -170,27 +183,108 @@ public class EmployeeRepository {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
 
-        return jdbcTemplate.update(
-                sql,
-                employee.getEmployeeNumber(),
-                employee.getFirstName(),
-                employee.getLastName(),
-                employee.getEmail(),
-                employee.getPhone(),
-                employee.getDepartment(),
-                employee.getPosition(),
-                employee.getRole(),
-                employee.getEmploymentStatus(),
-                employee.getHireDate(),
-                employee.getAddress(),
-                employee.getEmergencyContact(),
-                employee.getSalary(),
-                employee.getGender()
-        );
+        KeyHolder keyHolder =
+                new GeneratedKeyHolder();
+
+        jdbcTemplate.update(connection -> {
+
+            PreparedStatement ps =
+                    connection.prepareStatement(
+                            sql,
+                            Statement.RETURN_GENERATED_KEYS
+                    );
+
+            ps.setString(
+                    1,
+                    employee.getEmployeeNumber()
+            );
+
+            ps.setString(
+                    2,
+                    employee.getFirstName()
+            );
+
+            ps.setString(
+                    3,
+                    employee.getLastName()
+            );
+
+            ps.setString(
+                    4,
+                    employee.getEmail()
+            );
+
+            ps.setString(
+                    5,
+                    employee.getPhone()
+            );
+
+            ps.setString(
+                    6,
+                    employee.getDepartment()
+            );
+
+            ps.setString(
+                    7,
+                    employee.getPosition()
+            );
+
+            ps.setString(
+                    8,
+                    employee.getRole()
+            );
+
+            ps.setString(
+                    9,
+                    employee.getEmploymentStatus()
+            );
+
+            ps.setObject(
+                    10,
+                    employee.getHireDate()
+            );
+
+            ps.setString(
+                    11,
+                    employee.getAddress()
+            );
+
+            ps.setString(
+                    12,
+                    employee.getEmergencyContact()
+            );
+
+            ps.setBigDecimal(
+                    13,
+                    employee.getSalary()
+            );
+
+            ps.setString(
+                    14,
+                    employee.getGender()
+            );
+
+            return ps;
+
+        }, keyHolder);
+
+        if (keyHolder.getKey() == null) {
+            throw new IllegalStateException(
+                    "Unable to create employee"
+            );
+        }
+
+        return keyHolder.getKey().longValue();
     }
 
-    // Update an existing employee
-    public int update(Long id, Employee employee) {
+    // ==========================================================
+    // UPDATE EMPLOYEE
+    // ==========================================================
+
+    public int update(
+            Long id,
+            Employee employee
+    ) {
 
         String sql = """
                 UPDATE employees
@@ -232,11 +326,18 @@ public class EmployeeRepository {
         );
     }
 
-    // Delete an employee
+    // ==========================================================
+    // DELETE EMPLOYEE
+    // ==========================================================
+
     public int delete(Long id) {
 
-        String sql = "DELETE FROM employees WHERE id = ?";
+        String sql =
+                "DELETE FROM employees WHERE id = ?";
 
-        return jdbcTemplate.update(sql, id);
+        return jdbcTemplate.update(
+                sql,
+                id
+        );
     }
 }
