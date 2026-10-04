@@ -18,15 +18,9 @@ public class AttendanceMonitorRepository {
         this.jdbc = jdbc;
     }
 
-    /*
-     * ============================================================
-     * PUBLIC MONITOR
-     *
-     * Used by /qrmonitor.
-     *
-     * monitorId identifies the physical/browser monitor.
-     * ============================================================
-     */
+    // ============================================================
+    // FIND MONITOR BY ID
+    // ============================================================
 
     public AttendanceMonitor findById(Long monitorId) {
 
@@ -54,12 +48,18 @@ public class AttendanceMonitorRepository {
                 : result.get(0);
     }
 
-    /*
-     * Find an unassigned monitor by its OTP.
-     */
+    // ============================================================
+    // FIND UNASSIGNED MONITOR BY ACTIVATION CODE
+    // ============================================================
+
     public AttendanceMonitor findUnassignedByCode(
             String activationCode
     ) {
+
+        if (activationCode == null ||
+                activationCode.isBlank()) {
+            return null;
+        }
 
         List<AttendanceMonitor> result =
                 jdbc.query(
@@ -76,7 +76,7 @@ public class AttendanceMonitorRepository {
                         ORDER BY m.id DESC
                         """,
                         this::mapMonitor,
-                        activationCode
+                        activationCode.trim()
                 );
 
         return result.isEmpty()
@@ -84,56 +84,92 @@ public class AttendanceMonitorRepository {
                 : result.get(0);
     }
 
-    /*
-     * Create a completely new physical monitor.
-     */
+    // ============================================================
+    // CREATE NEW PUBLIC MONITOR
+    //
+    // IMPORTANT:
+    // SQL Server OUTPUT INSERTED.id guarantees that the ID returned
+    // belongs to the row that was just inserted.
+    // ============================================================
+
     public Long create(
             String activationCode
     ) {
 
-        jdbc.update(
-                """
-                INSERT INTO dbo.attendance_monitor
-                (
-                    company_id,
-                    authorized,
-                    activation_code,
-                    active,
-                    activation_type,
-                    qr_sequence
-                )
-                VALUES
-                (
-                    NULL,
-                    0,
-                    ?,
-                    0,
-                    'MANUAL',
-                    0
-                )
-                """,
-                activationCode
-        );
+        if (activationCode == null ||
+                activationCode.isBlank()) {
 
-        return jdbc.queryForObject(
-                """
-                SELECT CAST(
-                    SCOPE_IDENTITY()
-                    AS BIGINT
-                )
-                """,
-                Long.class
-        );
+            throw new IllegalArgumentException(
+                    "Activation code is required"
+            );
+        }
+
+        List<Long> ids =
+                jdbc.query(
+                        """
+                        INSERT INTO dbo.attendance_monitor
+                        (
+                            company_id,
+                            authorized,
+                            activation_code,
+                            active,
+                            activation_type,
+                            qr_sequence
+                        )
+                        OUTPUT INSERTED.id
+                        VALUES
+                        (
+                            NULL,
+                            0,
+                            ?,
+                            0,
+                            'MANUAL',
+                            0
+                        )
+                        """,
+                        (rs, rowNum) ->
+                                rs.getLong(1),
+                        activationCode
+                );
+
+        if (ids.isEmpty()) {
+            throw new IllegalStateException(
+                    "Attendance monitor was not created."
+            );
+        }
+
+        Long id = ids.get(0);
+
+        if (id == null) {
+            throw new IllegalStateException(
+                    "Attendance monitor was created but no ID was returned."
+            );
+        }
+
+        return id;
     }
 
-    /*
-     * Accept monitor permanently for a company.
-     */
+    // ============================================================
+    // AUTHORIZE MONITOR
+    // ============================================================
+
     public void authorize(
             Long monitorId,
             Long companyId,
             String authorizedBy
     ) {
+
+        if (monitorId == null) {
+            throw new IllegalArgumentException(
+                    "Monitor ID is required"
+            );
+        }
+
+        if (companyId == null) {
+            throw new IllegalArgumentException(
+                    "Company ID is required"
+            );
+        }
 
         int updated =
                 jdbc.update(
@@ -160,11 +196,10 @@ public class AttendanceMonitorRepository {
         }
     }
 
-    /*
-     * Reject/unassign monitor.
-     *
-     * It cannot be rejected by another company.
-     */
+    // ============================================================
+    // REJECT / UNASSIGN MONITOR
+    // ============================================================
+
     public void reject(
             Long monitorId,
             Long companyId
@@ -205,9 +240,10 @@ public class AttendanceMonitorRepository {
         }
     }
 
-    /*
-     * All accepted monitors for current company.
-     */
+    // ============================================================
+    // ACCEPTED MONITORS
+    // ============================================================
+
     public List<AttendanceMonitor> findAcceptedByCompany(
             Long companyId
     ) {
@@ -229,9 +265,10 @@ public class AttendanceMonitorRepository {
         );
     }
 
-    /*
-     * Active monitor for one company only.
-     */
+    // ============================================================
+    // ACTIVE MONITOR FOR COMPANY
+    // ============================================================
+
     public AttendanceMonitor findActiveByCompany(
             Long companyId
     ) {
@@ -259,9 +296,10 @@ public class AttendanceMonitorRepository {
                 : result.get(0);
     }
 
-    /*
-     * Specific monitor belonging to company.
-     */
+    // ============================================================
+    // FIND MONITOR FOR COMPANY
+    // ============================================================
+
     public AttendanceMonitor findByCompany(
             Long monitorId,
             Long companyId
@@ -289,6 +327,10 @@ public class AttendanceMonitorRepository {
                 ? null
                 : result.get(0);
     }
+
+    // ============================================================
+    // ACTIVATE
+    // ============================================================
 
     public void activate(
             Long monitorId,
@@ -336,6 +378,10 @@ public class AttendanceMonitorRepository {
         }
     }
 
+    // ============================================================
+    // DEACTIVATE
+    // ============================================================
+
     public void deactivate(
             Long monitorId,
             Long companyId,
@@ -361,6 +407,10 @@ public class AttendanceMonitorRepository {
                 companyId
         );
     }
+
+    // ============================================================
+    // ROTATE QR
+    // ============================================================
 
     public void rotate(
             Long monitorId,
@@ -400,6 +450,10 @@ public class AttendanceMonitorRepository {
         }
     }
 
+    // ============================================================
+    // CREATE SESSION
+    // ============================================================
+
     public Long createSession(
             Long monitorId,
             Long companyId,
@@ -435,6 +489,10 @@ public class AttendanceMonitorRepository {
         );
     }
 
+    // ============================================================
+    // OPEN SESSION
+    // ============================================================
+
     public Long getOpenSessionId(
             Long monitorId,
             Long companyId
@@ -461,6 +519,10 @@ public class AttendanceMonitorRepository {
                 : result.get(0);
     }
 
+    // ============================================================
+    // CLOSE SESSION
+    // ============================================================
+
     public void closeSession(
             Long sessionId,
             Long companyId,
@@ -485,6 +547,10 @@ public class AttendanceMonitorRepository {
                 companyId
         );
     }
+
+    // ============================================================
+    // LOG EVENT
+    // ============================================================
 
     public void logEvent(
             Long monitorId,
@@ -528,6 +594,10 @@ public class AttendanceMonitorRepository {
                 details
         );
     }
+
+    // ============================================================
+    // EVENTS
+    // ============================================================
 
     public List<AttendanceEvent> findEvents(
             Long companyId,
@@ -573,6 +643,10 @@ public class AttendanceMonitorRepository {
                 companyId
         );
     }
+
+    // ============================================================
+    // MAP MONITOR
+    // ============================================================
 
     private AttendanceMonitor mapMonitor(
             java.sql.ResultSet rs,
@@ -677,6 +751,10 @@ public class AttendanceMonitorRepository {
         return monitor;
     }
 
+    // ============================================================
+    // MAP EVENT
+    // ============================================================
+
     private AttendanceEvent mapEvent(
             java.sql.ResultSet rs,
             int row
@@ -685,7 +763,9 @@ public class AttendanceMonitorRepository {
         AttendanceEvent event =
                 new AttendanceEvent();
 
-        event.setId(rs.getLong("id"));
+        event.setId(
+                rs.getLong("id")
+        );
 
         long monitorId =
                 rs.getLong("monitor_id");
@@ -747,6 +827,10 @@ public class AttendanceMonitorRepository {
         return event;
     }
 
+    // ============================================================
+    // ACTIVATION CODE
+    // ============================================================
+
     private String generateActivationCode() {
 
         return String.format(
@@ -756,3 +840,4 @@ public class AttendanceMonitorRepository {
         );
     }
 }
+
