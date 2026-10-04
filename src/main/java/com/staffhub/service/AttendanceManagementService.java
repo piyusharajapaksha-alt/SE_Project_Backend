@@ -2,6 +2,7 @@ package com.staffhub.service;
 
 import com.staffhub.model.AttendanceRecord;
 import com.staffhub.repository.AttendanceManagementRepository;
+import com.staffhub.repository.AttendanceRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -14,26 +15,24 @@ import java.util.Locale;
 @Service
 public class AttendanceManagementService {
 
-    private static final String HR_MANAGER =
-            "HR Manager";
+    private static final String HR_MANAGER = "HR Manager";
 
     private final AttendanceManagementRepository repository;
-
+    private final AttendanceRepository attendanceRepository;
     private final CompanyContextService companyContextService;
 
     public AttendanceManagementService(
             AttendanceManagementRepository repository,
+            AttendanceRepository attendanceRepository,
             CompanyContextService companyContextService
     ) {
-        this.repository =
-                repository;
-
-        this.companyContextService =
-                companyContextService;
+        this.repository = repository;
+        this.attendanceRepository = attendanceRepository;
+        this.companyContextService = companyContextService;
     }
 
     // ============================================================
-    // CREATE MANUAL ATTENDANCE
+    // CREATE BRAND-NEW MANUAL ATTENDANCE
     // ============================================================
 
     @Transactional
@@ -48,19 +47,13 @@ public class AttendanceManagementService {
 
         requireAuthorizedUser();
 
-        if (
-                employeeNumber == null
-                        || employeeNumber.isBlank()
-        ) {
+        if (employeeNumber == null || employeeNumber.isBlank()) {
             throw new IllegalArgumentException(
                     "Employee number is required"
             );
         }
 
-        if (
-                dateValue == null
-                        || dateValue.isBlank()
-        ) {
+        if (dateValue == null || dateValue.isBlank()) {
             throw new IllegalArgumentException(
                     "Attendance date is required"
             );
@@ -69,53 +62,30 @@ public class AttendanceManagementService {
         LocalDate date;
 
         try {
-
-            date =
-                    LocalDate.parse(
-                            dateValue.trim()
-                    );
-
+            date = LocalDate.parse(dateValue.trim());
         } catch (Exception exception) {
-
             throw new IllegalArgumentException(
                     "Invalid attendance date"
             );
         }
 
-        String normalizedStatus =
-                normalizeStatus(status);
+        String normalizedStatus = normalizeStatus(status);
 
         LocalDateTime checkIn =
-                parseDateTime(
-                        checkInValue
-                );
+                parseDateTime(checkInValue);
 
         LocalDateTime checkOut =
-                parseDateTime(
-                        checkOutValue
-                );
+                parseDateTime(checkOutValue);
 
-        if (
-                checkIn != null
-                        && checkOut != null
-                        && checkOut.isBefore(checkIn)
-        ) {
-            throw new IllegalArgumentException(
-                    "Check-out cannot be earlier than check-in"
-            );
-        }
+        validateTimes(
+                checkIn,
+                checkOut
+        );
 
-        /*
-         * A present/late/half-day record should normally have
-         * a check-in time.
-         *
-         * Absent / On Leave can be created without times.
-         */
         if (
                 requiresCheckIn(normalizedStatus)
                         && checkIn == null
         ) {
-
             throw new IllegalArgumentException(
                     "Check-in time is required for "
                             + normalizedStatus
@@ -123,8 +93,7 @@ public class AttendanceManagementService {
         }
 
         Long companyId =
-                companyContextService
-                        .getCurrentCompanyId();
+                companyContextService.getCurrentCompanyId();
 
         Long employeeId =
                 repository.findActiveEmployeeByNumber(
@@ -133,7 +102,6 @@ public class AttendanceManagementService {
                 );
 
         if (employeeId == null) {
-
             throw new IllegalArgumentException(
                     "Active employee "
                             + employeeNumber
@@ -141,6 +109,10 @@ public class AttendanceManagementService {
             );
         }
 
+        /*
+         * Do not create duplicate attendance rows.
+         * The existing record must be edited instead.
+         */
         if (
                 repository.existsForEmployeeAndDate(
                         employeeId,
@@ -148,7 +120,6 @@ public class AttendanceManagementService {
                         date
                 )
         ) {
-
             throw new IllegalArgumentException(
                     "This employee already has an attendance record for "
                             + date
@@ -162,7 +133,6 @@ public class AttendanceManagementService {
                         : reason.trim();
 
         if (safeReason.isBlank()) {
-
             throw new IllegalArgumentException(
                     "A reason is required for manual attendance"
             );
@@ -179,8 +149,7 @@ public class AttendanceManagementService {
                         safeReason
                 );
 
-        String username =
-                currentUsername();
+        String username = currentUsername();
 
         repository.createManagementEvent(
                 companyId,
@@ -203,7 +172,6 @@ public class AttendanceManagementService {
                 );
 
         if (created == null) {
-
             throw new IllegalStateException(
                     "Manual attendance was created but could not be loaded"
             );
@@ -213,7 +181,124 @@ public class AttendanceManagementService {
     }
 
     // ============================================================
-    // DELETE
+    // CORRECT / EDIT EXISTING ATTENDANCE
+    // ============================================================
+
+    @Transactional
+    public AttendanceRecord correct(
+            Long id,
+            String checkInValue,
+            String checkOutValue,
+            String status,
+            String reason
+    ) {
+
+        requireAuthorizedUser();
+
+        if (id == null) {
+            throw new IllegalArgumentException(
+                    "Attendance record ID is required"
+            );
+        }
+
+        Long companyId =
+                companyContextService.getCurrentCompanyId();
+
+        AttendanceRecord existing =
+                repository.findById(
+                        id,
+                        companyId
+                );
+
+        if (existing == null) {
+            throw new IllegalArgumentException(
+                    "Attendance record was not found"
+            );
+        }
+
+        String normalizedStatus =
+                normalizeStatus(status);
+
+        LocalDateTime checkIn =
+                parseDateTime(checkInValue);
+
+        LocalDateTime checkOut =
+                parseDateTime(checkOutValue);
+
+        validateTimes(
+                checkIn,
+                checkOut
+        );
+
+        if (
+                requiresCheckIn(normalizedStatus)
+                        && checkIn == null
+        ) {
+            throw new IllegalArgumentException(
+                    "Check-in time is required for "
+                            + normalizedStatus
+            );
+        }
+
+        String safeReason =
+                reason == null
+                        ? ""
+                        : reason.trim();
+
+        if (safeReason.isBlank()) {
+            throw new IllegalArgumentException(
+                    "A reason is required when correcting attendance"
+            );
+        }
+
+        /*
+         * IMPORTANT:
+         *
+         * updateCorrection() belongs to AttendanceRepository,
+         * NOT AttendanceManagementRepository.
+         */
+        attendanceRepository.updateCorrection(
+                id,
+                companyId,
+                checkIn,
+                checkOut,
+                normalizedStatus,
+                safeReason
+        );
+
+        String username = currentUsername();
+
+        repository.createManagementEvent(
+                companyId,
+                id,
+                existing.getEmployeeId(),
+                "ATTENDANCE_RECORD_CORRECTED",
+                username,
+                "Attendance record #"
+                        + id
+                        + " for employee "
+                        + existing.getEmployeeNumber()
+                        + " was corrected. Reason: "
+                        + safeReason
+        );
+
+        AttendanceRecord updated =
+                repository.findById(
+                        id,
+                        companyId
+                );
+
+        if (updated == null) {
+            throw new IllegalStateException(
+                    "Attendance was updated but could not be loaded"
+            );
+        }
+
+        return updated;
+    }
+
+    // ============================================================
+    // DELETE REAL DATABASE RECORD
     // ============================================================
 
     @Transactional
@@ -225,7 +310,6 @@ public class AttendanceManagementService {
         requireAuthorizedUser();
 
         if (id == null) {
-
             throw new IllegalArgumentException(
                     "Attendance record ID is required"
             );
@@ -238,15 +322,13 @@ public class AttendanceManagementService {
                                 .toUpperCase(Locale.ROOT)
                 )
         ) {
-
             throw new IllegalArgumentException(
                     "Deletion verification failed"
             );
         }
 
         Long companyId =
-                companyContextService
-                        .getCurrentCompanyId();
+                companyContextService.getCurrentCompanyId();
 
         AttendanceRecord record =
                 repository.findById(
@@ -255,17 +337,15 @@ public class AttendanceManagementService {
                 );
 
         if (record == null) {
-
             throw new IllegalArgumentException(
                     "Attendance record was not found"
             );
         }
 
-        String username =
-                currentUsername();
+        String username = currentUsername();
 
         /*
-         * Delete the real DB row.
+         * THIS REALLY DELETES THE DATABASE ROW.
          */
         repository.deleteRecord(
                 id,
@@ -273,10 +353,9 @@ public class AttendanceManagementService {
         );
 
         /*
-         * Keep an audit event after deletion.
-         *
-         * attendance_record_id is intentionally NULL because
-         * the real attendance row no longer exists.
+         * Audit event is kept after deletion.
+         * attendance_record_id is NULL because
+         * the attendance row no longer exists.
          */
         repository.createManagementEvent(
                 companyId,
@@ -300,8 +379,7 @@ public class AttendanceManagementService {
 
     private void requireAuthorizedUser() {
 
-        String username =
-                currentUsername();
+        String username = currentUsername();
 
         String role =
                 repository.findCurrentUserRole(
@@ -314,7 +392,6 @@ public class AttendanceManagementService {
                         role.trim()
                 )
         ) {
-
             throw new SecurityException(
                     "Only an authorized HR Manager can modify attendance records"
             );
@@ -338,7 +415,6 @@ public class AttendanceManagementService {
                         || authentication.getName() == null
                         || authentication.getName().isBlank()
         ) {
-
             throw new SecurityException(
                     "No authenticated user found"
             );
@@ -350,7 +426,7 @@ public class AttendanceManagementService {
     }
 
     // ============================================================
-    // DATE/TIME
+    // DATE / TIME PARSER
     // ============================================================
 
     private LocalDateTime parseDateTime(
@@ -364,10 +440,29 @@ public class AttendanceManagementService {
             return null;
         }
 
+        String normalized =
+                value.trim();
+
+        /*
+         * Frontend may send ISO values containing Z,
+         * for example:
+         *
+         * 2026-10-05T08:30:00.000Z
+         *
+         * Remove timezone information because the
+         * attendance DB uses LocalDateTime.
+         */
         try {
 
+            if (normalized.endsWith("Z")) {
+
+                return java.time.OffsetDateTime
+                        .parse(normalized)
+                        .toLocalDateTime();
+            }
+
             return LocalDateTime.parse(
-                    value.trim()
+                    normalized
             );
 
         } catch (Exception exception) {
@@ -380,7 +475,27 @@ public class AttendanceManagementService {
     }
 
     // ============================================================
-    // STATUS
+    // TIME VALIDATION
+    // ============================================================
+
+    private void validateTimes(
+            LocalDateTime checkIn,
+            LocalDateTime checkOut
+    ) {
+
+        if (
+                checkIn != null
+                        && checkOut != null
+                        && checkOut.isBefore(checkIn)
+        ) {
+            throw new IllegalArgumentException(
+                    "Check-out cannot be earlier than check-in"
+            );
+        }
+    }
+
+    // ============================================================
+    // STATUS NORMALIZATION
     // ============================================================
 
     private String normalizeStatus(
@@ -391,7 +506,6 @@ public class AttendanceManagementService {
                 status == null
                         || status.isBlank()
         ) {
-
             throw new IllegalArgumentException(
                     "Attendance status is required"
             );
@@ -426,6 +540,10 @@ public class AttendanceManagementService {
         };
     }
 
+    // ============================================================
+    // STATUS TIME REQUIREMENT
+    // ============================================================
+
     private boolean requiresCheckIn(
             String status
     ) {
@@ -436,3 +554,4 @@ public class AttendanceManagementService {
                         || "Half Day".equals(status);
     }
 }
+

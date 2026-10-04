@@ -28,24 +28,42 @@ public class AttendanceManagementController {
     ) {
 
         if (body == null) {
-
             throw new IllegalArgumentException(
                     "Request body is required"
             );
         }
 
         return service.createManual(
-
                 body.get("employeeNumber"),
-
                 body.get("date"),
-
                 body.get("checkIn"),
-
                 body.get("checkOut"),
-
                 body.get("status"),
+                body.get("reason")
+        );
+    }
 
+    // ============================================================
+    // EDIT / CORRECT EXISTING ATTENDANCE
+    // ============================================================
+
+    @PutMapping("/records/{id}")
+    public AttendanceRecord correct(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body
+    ) {
+
+        if (body == null) {
+            throw new IllegalArgumentException(
+                    "Request body is required"
+            );
+        }
+
+        return service.correct(
+                id,
+                body.get("checkIn"),
+                body.get("checkOut"),
+                body.get("status"),
                 body.get("reason")
         );
     }
