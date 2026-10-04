@@ -5,6 +5,7 @@ import com.staffhub.security.AuthUserDetailsService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 
 import org.springframework.security.authentication.AuthenticationManager;
@@ -25,11 +26,13 @@ import org.springframework.security.web.context.SecurityContextRepository;
 
 import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
 
+
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
     private final AuthUserDetailsService userDetailsService;
+
 
     public SecurityConfig(
             AuthUserDetailsService userDetailsService) {
@@ -38,12 +41,22 @@ public class SecurityConfig {
                 userDetailsService;
     }
 
+
+    // ============================================================
+    // PASSWORD ENCODER
+    // ============================================================
+
     @Bean
     public PasswordEncoder passwordEncoder() {
 
         return PasswordEncoderFactories
                 .createDelegatingPasswordEncoder();
     }
+
+
+    // ============================================================
+    // AUTHENTICATION PROVIDER
+    // ============================================================
 
     @Bean
     public DaoAuthenticationProvider authenticationProvider(
@@ -59,6 +72,11 @@ public class SecurityConfig {
         return provider;
     }
 
+
+    // ============================================================
+    // AUTHENTICATION MANAGER
+    // ============================================================
+
     @Bean
     public AuthenticationManager authenticationManager(
             AuthenticationConfiguration configuration)
@@ -68,6 +86,11 @@ public class SecurityConfig {
                 .getAuthenticationManager();
     }
 
+
+    // ============================================================
+    // SECURITY CONTEXT
+    // ============================================================
+
     @Bean
     public SecurityContextRepository
     securityContextRepository() {
@@ -75,12 +98,22 @@ public class SecurityConfig {
         return new HttpSessionSecurityContextRepository();
     }
 
+
+    // ============================================================
+    // CSRF
+    // ============================================================
+
     @Bean
     public HttpSessionCsrfTokenRepository
     csrfTokenRepository() {
 
         return new HttpSessionCsrfTokenRepository();
     }
+
+
+    // ============================================================
+    // SECURITY FILTER CHAIN
+    // ============================================================
 
     @Bean
     public SecurityFilterChain securityFilterChain(
@@ -91,50 +124,120 @@ public class SecurityConfig {
 
         http
 
-            .cors(cors -> {})
+                // ------------------------------------------------
+                // CORS
+                // ------------------------------------------------
+                .cors(cors -> {})
 
-            .csrf(csrf -> csrf
 
-                    .csrfTokenRepository(
-                            csrfTokenRepository)
+                // ------------------------------------------------
+                // CSRF
+                // ------------------------------------------------
+                .csrf(csrf -> csrf
 
-                    .ignoringRequestMatchers(
-                            "/api/auth/login",
-                            "/api/auth/register")
-            )
+                        .csrfTokenRepository(
+                                csrfTokenRepository)
 
-            .authorizeHttpRequests(auth -> auth
+                        // Login and registration are intentionally
+                        // excluded because they happen before the
+                        // authenticated session is established.
+                        .ignoringRequestMatchers(
+                                "/api/auth/login",
+                                "/api/auth/register")
+                )
 
-                    .requestMatchers(
-                            "/api/auth/login",
-                            "/api/auth/register",
-                            "/api/auth/csrf")
-                    .permitAll()
 
-                    .anyRequest()
-                    .authenticated()
-            )
+                // ------------------------------------------------
+                // AUTHORIZATION
+                // ------------------------------------------------
+                .authorizeHttpRequests(auth -> auth
 
-            .formLogin(form ->
-                    form.disable())
+                        // ========================================
+                        // PUBLIC AUTHENTICATION ENDPOINTS
+                        // ========================================
 
-            .httpBasic(basic ->
-                    basic.disable())
+                        .requestMatchers(
+                                "/api/auth/login",
+                                "/api/auth/register",
+                                "/api/auth/csrf"
+                        )
+                        .permitAll()
 
-            .securityContext(securityContext ->
 
-                    securityContext
-                            .securityContextRepository(
-                                    securityContextRepository)
-            )
+                        // ========================================
+                        // PUBLIC QR ATTENDANCE MONITOR
+                        // ========================================
+                        //
+                        // The physical QR monitor does not have
+                        // a StaffHub user account/session.
+                        //
+                        // Therefore the monitor must be able to
+                        // request its monitor ID and activation
+                        // code before it is authorized by HR.
+                        //
+                        // IMPORTANT:
+                        // Only GET is public.
+                        //
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/attendance/monitor"
+                        )
+                        .permitAll()
 
-            .exceptionHandling(exception ->
 
-                    exception.authenticationEntryPoint(
-                            new HttpStatusEntryPoint(
-                                    HttpStatus.UNAUTHORIZED))
-            );
+                        // ========================================
+                        // EVERYTHING ELSE
+                        // ========================================
+                        //
+                        // All other StaffHub APIs require an
+                        // authenticated user/session.
+                        //
+                        .anyRequest()
+                        .authenticated()
+                )
+
+
+                // ------------------------------------------------
+                // FORM LOGIN
+                // ------------------------------------------------
+                .formLogin(form ->
+                        form.disable())
+
+
+                // ------------------------------------------------
+                // HTTP BASIC
+                // ------------------------------------------------
+                .httpBasic(basic ->
+                        basic.disable())
+
+
+                // ------------------------------------------------
+                // SECURITY CONTEXT
+                // ------------------------------------------------
+                .securityContext(securityContext ->
+
+                        securityContext
+                                .securityContextRepository(
+                                        securityContextRepository)
+                )
+
+
+                // ------------------------------------------------
+                // UNAUTHENTICATED RESPONSE
+                // ------------------------------------------------
+                //
+                // Your frontend expects HTTP 401 instead of
+                // Spring's default login-page redirect.
+                //
+                .exceptionHandling(exception ->
+
+                        exception.authenticationEntryPoint(
+                                new HttpStatusEntryPoint(
+                                        HttpStatus.UNAUTHORIZED))
+                );
+
 
         return http.build();
     }
 }
+
