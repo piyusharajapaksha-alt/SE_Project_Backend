@@ -2,11 +2,11 @@ package com.staffhub.service;
 
 import com.staffhub.model.Employee;
 import com.staffhub.repository.EmployeeRepository;
+
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
 
@@ -17,14 +17,19 @@ public class EmployeeService {
             "Abcd1234";
 
     private final EmployeeRepository employeeRepository;
+
     private final JdbcTemplate jdbcTemplate;
+
     private final PasswordEncoder passwordEncoder;
+
+    private final CompanyContextService companyContextService;
 
     public EmployeeService(
             EmployeeRepository employeeRepository,
             JdbcTemplate jdbcTemplate,
-            PasswordEncoder passwordEncoder
-    ) {
+            PasswordEncoder passwordEncoder,
+            CompanyContextService companyContextService) {
+
         this.employeeRepository =
                 employeeRepository;
 
@@ -33,34 +38,63 @@ public class EmployeeService {
 
         this.passwordEncoder =
                 passwordEncoder;
+
+        this.companyContextService =
+                companyContextService;
     }
 
     // ==========================================================
-    // GET ALL EMPLOYEES
+    // GET ALL
     // ==========================================================
 
     public List<Employee> getAllEmployees() {
 
-        return employeeRepository.findAll();
+        Long companyId =
+                companyContextService
+                        .getCurrentCompanyId();
+
+        return employeeRepository
+                .findAll(companyId);
     }
 
     // ==========================================================
-    // GET EMPLOYEE BY ID
+    // GET BY ID
     // ==========================================================
 
-    public Employee getEmployeeById(Long id) {
+    public Employee getEmployeeById(
+            Long id) {
 
-        return employeeRepository.findById(id);
+        Long companyId =
+                companyContextService
+                        .getCurrentCompanyId();
+
+        Employee employee =
+                employeeRepository
+                        .findById(
+                                id,
+                                companyId
+                        );
+
+        if (employee == null) {
+
+            throw new IllegalArgumentException(
+                    "Employee not found"
+            );
+        }
+
+        return employee;
     }
 
     // ==========================================================
-    // CREATE EMPLOYEE + LOGIN ACCOUNT
+    // CREATE EMPLOYEE + LOGIN
     // ==========================================================
 
     @Transactional
-    public Long createEmployee(Employee employee) {
+    public Long createEmployee(
+            Employee employee) {
 
         if (employee == null) {
+
             throw new IllegalArgumentException(
                     "Employee data is required"
             );
@@ -81,6 +115,10 @@ public class EmployeeService {
 
         employee.setEmail(email);
 
+        Long companyId =
+                companyContextService
+                        .getCurrentCompanyId();
+
         // ------------------------------------------------------
         // Check employee email
         // ------------------------------------------------------
@@ -91,9 +129,11 @@ public class EmployeeService {
                         SELECT COUNT(*)
                         FROM employees
                         WHERE LOWER(email) = LOWER(?)
+                          AND company_id = ?
                         """,
                         Integer.class,
-                        email
+                        email,
+                        companyId
                 );
 
         if (employeeCount != null
@@ -105,7 +145,7 @@ public class EmployeeService {
         }
 
         // ------------------------------------------------------
-        // Check login account email
+        // Check login email globally
         // ------------------------------------------------------
 
         Integer accountCount =
@@ -128,11 +168,26 @@ public class EmployeeService {
         }
 
         // ------------------------------------------------------
+        // Generate employee number if necessary
+        // ------------------------------------------------------
+
+        if (employee.getEmployeeNumber() == null
+                || employee.getEmployeeNumber().isBlank()) {
+
+            throw new IllegalArgumentException(
+                    "Employee number is required"
+            );
+        }
+
+        // ------------------------------------------------------
         // Create employee
         // ------------------------------------------------------
 
         Long employeeId =
-                employeeRepository.save(employee);
+                employeeRepository.save(
+                        employee,
+                        companyId
+                );
 
         // ------------------------------------------------------
         // Create login account
@@ -148,11 +203,19 @@ public class EmployeeService {
                 INSERT INTO staffhub_auth_users
                 (
                     employee_id,
+                    owner_id,
                     email,
                     password_hash,
                     enabled
                 )
-                VALUES (?, ?, ?, 1)
+                VALUES
+                (
+                    ?,
+                    NULL,
+                    ?,
+                    ?,
+                    1
+                )
                 """,
                 employeeId,
                 email,
@@ -163,75 +226,76 @@ public class EmployeeService {
     }
 
     // ==========================================================
-    // UPDATE EMPLOYEE
+    // UPDATE
     // ==========================================================
 
     @Transactional
     public int updateEmployee(
             Long id,
-            Employee employee
-    ) {
+            Employee employee) {
 
-        if (employee == null) {
+        Long companyId =
+                companyContextService
+                        .getCurrentCompanyId();
+
+        Employee existing =
+                employeeRepository.findById(
+                        id,
+                        companyId
+                );
+
+        if (existing == null) {
+
             throw new IllegalArgumentException(
-                    "Employee data is required"
+                    "Employee not found"
             );
         }
 
-        String oldEmail =
-                employeeRepository
-                        .findById(id)
-                        .getEmail();
-
-        String newEmail =
-                employee.getEmail();
-
-        if (newEmail == null
-                || newEmail.isBlank()) {
+        if (employee.getEmail() == null
+                || employee.getEmail().isBlank()) {
 
             throw new IllegalArgumentException(
                     "Employee email is required"
             );
         }
 
-        newEmail =
-                newEmail.trim().toLowerCase();
+        String newEmail =
+                employee.getEmail()
+                        .trim()
+                        .toLowerCase();
 
         employee.setEmail(newEmail);
+
+        Integer existingAccount =
+                jdbcTemplate.queryForObject(
+                        """
+                        SELECT COUNT(*)
+                        FROM staffhub_auth_users
+                        WHERE LOWER(email) = LOWER(?)
+                          AND employee_id <> ?
+                        """,
+                        Integer.class,
+                        newEmail,
+                        id
+                );
+
+        if (existingAccount != null
+                && existingAccount > 0) {
+
+            throw new IllegalArgumentException(
+                    "Another login account already uses this email"
+            );
+        }
 
         int result =
                 employeeRepository.update(
                         id,
-                        employee
+                        employee,
+                        companyId
                 );
 
-        // ------------------------------------------------------
-        // Keep login email synchronized
-        // ------------------------------------------------------
-
-        if (oldEmail != null
-                && !oldEmail.equalsIgnoreCase(newEmail)) {
-
-            Integer existingAccount =
-                    jdbcTemplate.queryForObject(
-                            """
-                            SELECT COUNT(*)
-                            FROM staffhub_auth_users
-                            WHERE LOWER(email) = LOWER(?)
-                              AND employee_id <> ?
-                            """,
-                            Integer.class,
-                            newEmail,
-                            id
-                    );
-
-            if (existingAccount != null
-                    && existingAccount > 0) {
-
-                throw new IllegalArgumentException(
-                        "Another login account already uses this email"
-                );
-            }
+        if (!existing.getEmail()
+                .equalsIgnoreCase(newEmail)) {
 
             jdbcTemplate.update(
                     """
@@ -248,14 +312,29 @@ public class EmployeeService {
     }
 
     // ==========================================================
-    // DELETE EMPLOYEE
+    // DELETE
     // ==========================================================
 
     @Transactional
-    public int deleteEmployee(Long id) {
+    public int deleteEmployee(
+            Long id) {
 
-        // Delete login account first because
-        // it references the employee.
+        Long companyId =
+                companyContextService
+                        .getCurrentCompanyId();
+
+        Employee employee =
+                employeeRepository.findById(
+                        id,
+                        companyId
+                );
+
+        if (employee == null) {
+
+            throw new IllegalArgumentException(
+                    "Employee not found"
+            );
+        }
 
         jdbcTemplate.update(
                 """
@@ -265,6 +344,9 @@ public class EmployeeService {
                 id
         );
 
-        return employeeRepository.delete(id);
+        return employeeRepository.delete(
+                id,
+                companyId
+        );
     }
 }

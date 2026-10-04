@@ -20,151 +20,145 @@ public class EmployeeRepository {
     }
 
     // ==========================================================
-    // GET ALL EMPLOYEES
+    // MAPPER
     // ==========================================================
 
-    public List<Employee> findAll() {
+    private Employee mapEmployee(
+            java.sql.ResultSet rs) throws java.sql.SQLException {
 
-        String sql = "SELECT * FROM employees ORDER BY id";
+        Employee employee = new Employee();
 
-        return jdbcTemplate.query(sql, (resultSet, rowNumber) -> {
+        employee.setId(
+                rs.getLong("id")
+        );
 
-            Employee employee = new Employee();
+        employee.setCompanyId(
+                rs.getLong("company_id")
+        );
 
-            employee.setId(resultSet.getLong("id"));
-            employee.setEmployeeNumber(
-                    resultSet.getString("employee_number")
-            );
-            employee.setFirstName(
-                    resultSet.getString("first_name")
-            );
-            employee.setLastName(
-                    resultSet.getString("last_name")
-            );
-            employee.setEmail(
-                    resultSet.getString("email")
-            );
-            employee.setPhone(
-                    resultSet.getString("phone")
-            );
-            employee.setDepartment(
-                    resultSet.getString("department")
-            );
-            employee.setPosition(
-                    resultSet.getString("position")
-            );
-            employee.setRole(
-                    resultSet.getString("role")
-            );
-            employee.setEmploymentStatus(
-                    resultSet.getString("employment_status")
-            );
+        employee.setEmployeeNumber(
+                rs.getString("employee_number")
+        );
 
-            if (resultSet.getDate("hire_date") != null) {
-                employee.setHireDate(
-                        resultSet.getDate("hire_date").toLocalDate()
-                );
-            }
+        employee.setFirstName(
+                rs.getString("first_name")
+        );
 
-            employee.setAddress(
-                    resultSet.getString("address")
+        employee.setLastName(
+                rs.getString("last_name")
+        );
+
+        employee.setEmail(
+                rs.getString("email")
+        );
+
+        employee.setPhone(
+                rs.getString("phone")
+        );
+
+        employee.setDepartment(
+                rs.getString("department")
+        );
+
+        employee.setPosition(
+                rs.getString("position")
+        );
+
+        employee.setRole(
+                rs.getString("role")
+        );
+
+        employee.setEmploymentStatus(
+                rs.getString("employment_status")
+        );
+
+        if (rs.getDate("hire_date") != null) {
+
+            employee.setHireDate(
+                    rs.getDate("hire_date")
+                            .toLocalDate()
             );
+        }
 
-            employee.setEmergencyContact(
-                    resultSet.getString("emergency_contact")
-            );
+        employee.setAddress(
+                rs.getString("address")
+        );
 
-            employee.setSalary(
-                    resultSet.getBigDecimal("salary")
-            );
+        employee.setEmergencyContact(
+                rs.getString("emergency_contact")
+        );
 
-            employee.setGender(
-                    resultSet.getString("gender")
-            );
+        employee.setSalary(
+                rs.getBigDecimal("salary")
+        );
 
-            return employee;
-        });
+        employee.setGender(
+                rs.getString("gender")
+        );
+
+        return employee;
     }
 
     // ==========================================================
-    // GET EMPLOYEE BY ID
+    // GET ALL EMPLOYEES FOR COMPANY
     // ==========================================================
 
-    public Employee findById(Long id) {
+    public List<Employee> findAll(Long companyId) {
 
-        String sql = "SELECT * FROM employees WHERE id = ?";
+        String sql = """
+                SELECT *
+                FROM employees
+                WHERE company_id = ?
+                ORDER BY id
+                """;
 
-        return jdbcTemplate.queryForObject(
+        return jdbcTemplate.query(
                 sql,
-                (resultSet, rowNumber) -> {
-
-                    Employee employee = new Employee();
-
-                    employee.setId(resultSet.getLong("id"));
-                    employee.setEmployeeNumber(
-                            resultSet.getString("employee_number")
-                    );
-                    employee.setFirstName(
-                            resultSet.getString("first_name")
-                    );
-                    employee.setLastName(
-                            resultSet.getString("last_name")
-                    );
-                    employee.setEmail(
-                            resultSet.getString("email")
-                    );
-                    employee.setPhone(
-                            resultSet.getString("phone")
-                    );
-                    employee.setDepartment(
-                            resultSet.getString("department")
-                    );
-                    employee.setPosition(
-                            resultSet.getString("position")
-                    );
-                    employee.setRole(
-                            resultSet.getString("role")
-                    );
-                    employee.setEmploymentStatus(
-                            resultSet.getString("employment_status")
-                    );
-
-                    if (resultSet.getDate("hire_date") != null) {
-                        employee.setHireDate(
-                                resultSet.getDate("hire_date").toLocalDate()
-                        );
-                    }
-
-                    employee.setAddress(
-                            resultSet.getString("address")
-                    );
-
-                    employee.setEmergencyContact(
-                            resultSet.getString("emergency_contact")
-                    );
-
-                    employee.setSalary(
-                            resultSet.getBigDecimal("salary")
-                    );
-
-                    employee.setGender(
-                            resultSet.getString("gender")
-                    );
-
-                    return employee;
-                },
-                id
+                (rs, rowNum) -> mapEmployee(rs),
+                companyId
         );
+    }
+
+    // ==========================================================
+    // GET EMPLOYEE BY ID + COMPANY
+    // ==========================================================
+
+    public Employee findById(
+            Long id,
+            Long companyId) {
+
+        String sql = """
+                SELECT *
+                FROM employees
+                WHERE id = ?
+                  AND company_id = ?
+                """;
+
+        List<Employee> results =
+                jdbcTemplate.query(
+                        sql,
+                        (rs, rowNum) -> mapEmployee(rs),
+                        id,
+                        companyId
+                );
+
+        return results.isEmpty()
+                ? null
+                : results.get(0);
     }
 
     // ==========================================================
     // CREATE EMPLOYEE
     // ==========================================================
 
-    public Long save(Employee employee) {
+    public Long save(
+            Employee employee,
+            Long companyId) {
 
         String sql = """
-                INSERT INTO employees (
+                INSERT INTO employees
+                (
+                    company_id,
                     employee_number,
                     first_name,
                     last_name,
@@ -180,111 +174,136 @@ public class EmployeeRepository {
                     salary,
                     gender
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES
+                (
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    ?
+                )
                 """;
 
         KeyHolder keyHolder =
                 new GeneratedKeyHolder();
 
-        jdbcTemplate.update(connection -> {
+        jdbcTemplate.update(
+                connection -> {
 
-            PreparedStatement ps =
-                    connection.prepareStatement(
-                            sql,
-                            Statement.RETURN_GENERATED_KEYS
+                    PreparedStatement ps =
+                            connection.prepareStatement(
+                                    sql,
+                                    Statement.RETURN_GENERATED_KEYS
+                            );
+
+                    ps.setLong(1, companyId);
+
+                    ps.setString(
+                            2,
+                            employee.getEmployeeNumber()
                     );
 
-            ps.setString(
-                    1,
-                    employee.getEmployeeNumber()
-            );
+                    ps.setString(
+                            3,
+                            employee.getFirstName()
+                    );
 
-            ps.setString(
-                    2,
-                    employee.getFirstName()
-            );
+                    ps.setString(
+                            4,
+                            employee.getLastName()
+                    );
 
-            ps.setString(
-                    3,
-                    employee.getLastName()
-            );
+                    ps.setString(
+                            5,
+                            employee.getEmail()
+                    );
 
-            ps.setString(
-                    4,
-                    employee.getEmail()
-            );
+                    ps.setString(
+                            6,
+                            employee.getPhone()
+                    );
 
-            ps.setString(
-                    5,
-                    employee.getPhone()
-            );
+                    ps.setString(
+                            7,
+                            employee.getDepartment()
+                    );
 
-            ps.setString(
-                    6,
-                    employee.getDepartment()
-            );
+                    ps.setString(
+                            8,
+                            employee.getPosition()
+                    );
 
-            ps.setString(
-                    7,
-                    employee.getPosition()
-            );
+                    ps.setString(
+                            9,
+                            employee.getRole()
+                    );
 
-            ps.setString(
-                    8,
-                    employee.getRole()
-            );
+                    ps.setString(
+                            10,
+                            employee.getEmploymentStatus()
+                    );
 
-            ps.setString(
-                    9,
-                    employee.getEmploymentStatus()
-            );
+                    ps.setObject(
+                            11,
+                            employee.getHireDate()
+                    );
 
-            ps.setObject(
-                    10,
-                    employee.getHireDate()
-            );
+                    ps.setString(
+                            12,
+                            employee.getAddress()
+                    );
 
-            ps.setString(
-                    11,
-                    employee.getAddress()
-            );
+                    ps.setString(
+                            13,
+                            employee.getEmergencyContact()
+                    );
 
-            ps.setString(
-                    12,
-                    employee.getEmergencyContact()
-            );
+                    ps.setBigDecimal(
+                            14,
+                            employee.getSalary()
+                    );
 
-            ps.setBigDecimal(
-                    13,
-                    employee.getSalary()
-            );
+                    ps.setString(
+                            15,
+                            employee.getGender()
+                    );
 
-            ps.setString(
-                    14,
-                    employee.getGender()
-            );
+                    return ps;
 
-            return ps;
-
-        }, keyHolder);
+                },
+                keyHolder
+        );
 
         if (keyHolder.getKey() == null) {
+
             throw new IllegalStateException(
                     "Unable to create employee"
             );
         }
 
-        return keyHolder.getKey().longValue();
+        return keyHolder
+                .getKey()
+                .longValue();
     }
 
     // ==========================================================
-    // UPDATE EMPLOYEE
+    // UPDATE
     // ==========================================================
 
     public int update(
             Long id,
-            Employee employee
-    ) {
+            Employee employee,
+            Long companyId) {
 
         String sql = """
                 UPDATE employees
@@ -304,6 +323,7 @@ public class EmployeeRepository {
                     salary = ?,
                     gender = ?
                 WHERE id = ?
+                  AND company_id = ?
                 """;
 
         return jdbcTemplate.update(
@@ -322,22 +342,27 @@ public class EmployeeRepository {
                 employee.getEmergencyContact(),
                 employee.getSalary(),
                 employee.getGender(),
-                id
+                id,
+                companyId
         );
     }
 
     // ==========================================================
-    // DELETE EMPLOYEE
+    // DELETE
     // ==========================================================
 
-    public int delete(Long id) {
-
-        String sql =
-                "DELETE FROM employees WHERE id = ?";
+    public int delete(
+            Long id,
+            Long companyId) {
 
         return jdbcTemplate.update(
-                sql,
-                id
+                """
+                DELETE FROM employees
+                WHERE id = ?
+                  AND company_id = ?
+                """,
+                id,
+                companyId
         );
     }
 }
