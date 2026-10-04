@@ -10,13 +10,17 @@ public class CompanyContextService {
 
     private final JdbcTemplate jdbcTemplate;
 
-    public CompanyContextService(JdbcTemplate jdbcTemplate) {
+    public CompanyContextService(
+            JdbcTemplate jdbcTemplate
+    ) {
         this.jdbcTemplate = jdbcTemplate;
     }
 
     /**
-     * Returns the company ID belonging to the currently
-     * authenticated owner or employee.
+     * Returns the company belonging to the
+     * currently authenticated user.
+     *
+     * NEVER accepts companyId from the frontend.
      */
     public Long getCurrentCompanyId() {
 
@@ -25,10 +29,12 @@ public class CompanyContextService {
                         .getContext()
                         .getAuthentication();
 
-        if (authentication == null
-                || !authentication.isAuthenticated()
-                || authentication.getName() == null) {
-
+        if (
+                authentication == null
+                        || !authentication.isAuthenticated()
+                        || authentication.getName() == null
+                        || authentication.getName().isBlank()
+        ) {
             throw new IllegalStateException(
                     "No authenticated user found"
             );
@@ -41,58 +47,27 @@ public class CompanyContextService {
                         .toLowerCase();
 
         /*
-         * Owner:
-         * auth.owner_id -> companies.owner_id
+         * OWNER
+         *
+         * auth user
+         *     -> owner
+         *     -> company
          */
-        Long ownerCompanyId = null;
-
-        try {
-
-            ownerCompanyId =
-                    jdbcTemplate.queryForObject(
-                            """
-                            SELECT c.id
-                            FROM companies c
-                            INNER JOIN company_owners o
-                                ON o.id = c.owner_id
-                            INNER JOIN staffhub_auth_users a
-                                ON a.owner_id = o.id
-                            WHERE LOWER(a.email) = LOWER(?)
-                            """,
-                            Long.class,
-                            email
-                    );
-
-        } catch (Exception ignored) {
-        }
+        Long ownerCompanyId = findOwnerCompany(email);
 
         if (ownerCompanyId != null) {
             return ownerCompanyId;
         }
 
         /*
-         * Employee:
-         * auth.employee_id -> employees.company_id
+         * EMPLOYEE
+         *
+         * auth user
+         *     -> employee
+         *     -> company
          */
-        Long employeeCompanyId = null;
-
-        try {
-
-            employeeCompanyId =
-                    jdbcTemplate.queryForObject(
-                            """
-                            SELECT e.company_id
-                            FROM employees e
-                            INNER JOIN staffhub_auth_users a
-                                ON a.employee_id = e.id
-                            WHERE LOWER(a.email) = LOWER(?)
-                            """,
-                            Long.class,
-                            email
-                    );
-
-        } catch (Exception ignored) {
-        }
+        Long employeeCompanyId =
+                findEmployeeCompany(email);
 
         if (employeeCompanyId != null) {
             return employeeCompanyId;
@@ -101,5 +76,154 @@ public class CompanyContextService {
         throw new IllegalStateException(
                 "Authenticated user is not linked to a company"
         );
+    }
+
+    private Long findOwnerCompany(
+            String email
+    ) {
+
+        try {
+
+            return jdbcTemplate.queryForObject(
+                    """
+                    SELECT TOP 1 c.id
+                    FROM dbo.companies c
+                    INNER JOIN dbo.company_owners o
+                        ON o.id = c.owner_id
+                    INNER JOIN dbo.staffhub_auth_users a
+                        ON a.owner_id = o.id
+                    WHERE LOWER(a.email) = LOWER(?)
+                      AND a.enabled = 1
+                    """,
+                    Long.class,
+                    email
+            );
+
+        } catch (Exception ignored) {
+
+            return null;
+        }
+    }
+
+    private Long findEmployeeCompany(
+            String email
+    ) {
+
+        try {
+
+            return jdbcTemplate.queryForObject(
+                    """
+                    SELECT TOP 1 e.company_id
+                    FROM dbo.employees e
+                    INNER JOIN dbo.staffhub_auth_users a
+                        ON a.employee_id = e.id
+                    WHERE LOWER(a.email) = LOWER(?)
+                      AND a.enabled = 1
+                      AND e.company_id IS NOT NULL
+                    """,
+                    Long.class,
+                    email
+            );
+
+        } catch (Exception ignored) {
+
+            return null;
+        }
+    }
+
+    /**
+     * Checks whether an employee belongs to
+     * the current authenticated company.
+     */
+    public boolean employeeBelongsToCurrentCompany(
+            Long employeeId
+    ) {
+
+        if (employeeId == null) {
+            return false;
+        }
+
+        Long companyId =
+                getCurrentCompanyId();
+
+        Integer count =
+                jdbcTemplate.queryForObject(
+                        """
+                        SELECT COUNT(*)
+                        FROM dbo.employees
+                        WHERE id = ?
+                          AND company_id = ?
+                        """,
+                        Integer.class,
+                        employeeId,
+                        companyId
+                );
+
+        return count != null && count > 0;
+    }
+
+    /**
+     * Employee number version.
+     */
+    public boolean employeeNumberBelongsToCurrentCompany(
+            String employeeNumber
+    ) {
+
+        if (
+                employeeNumber == null
+                        || employeeNumber.isBlank()
+        ) {
+            return false;
+        }
+
+        Long companyId =
+                getCurrentCompanyId();
+
+        Integer count =
+                jdbcTemplate.queryForObject(
+                        """
+                        SELECT COUNT(*)
+                        FROM dbo.employees
+                        WHERE employee_number = ?
+                          AND company_id = ?
+                        """,
+                        Integer.class,
+                        employeeNumber.trim(),
+                        companyId
+                );
+
+        return count != null && count > 0;
+    }
+
+    /**
+     * Throws an exception if an employee does
+     * not belong to the current company.
+     */
+    public void requireEmployeeInCurrentCompany(
+            Long employeeId
+    ) {
+
+        if (!employeeBelongsToCurrentCompany(employeeId)) {
+
+            throw new IllegalArgumentException(
+                    "Employee does not belong to the current company"
+            );
+        }
+    }
+
+    public void requireEmployeeNumberInCurrentCompany(
+            String employeeNumber
+    ) {
+
+        if (
+                !employeeNumberBelongsToCurrentCompany(
+                        employeeNumber
+                )
+        ) {
+
+            throw new IllegalArgumentException(
+                    "Employee does not belong to the current company"
+            );
+        }
     }
 }

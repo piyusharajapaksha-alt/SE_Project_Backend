@@ -28,7 +28,8 @@ public class EmployeeService {
             EmployeeRepository employeeRepository,
             JdbcTemplate jdbcTemplate,
             PasswordEncoder passwordEncoder,
-            CompanyContextService companyContextService) {
+            CompanyContextService companyContextService
+    ) {
 
         this.employeeRepository =
                 employeeRepository;
@@ -44,7 +45,7 @@ public class EmployeeService {
     }
 
     // ==========================================================
-    // GET ALL
+    // GET ALL EMPLOYEES
     // ==========================================================
 
     public List<Employee> getAllEmployees() {
@@ -58,11 +59,12 @@ public class EmployeeService {
     }
 
     // ==========================================================
-    // GET BY ID
+    // GET EMPLOYEE BY ID
     // ==========================================================
 
     public Employee getEmployeeById(
-            Long id) {
+            Long id
+    ) {
 
         Long companyId =
                 companyContextService
@@ -86,12 +88,32 @@ public class EmployeeService {
     }
 
     // ==========================================================
-    // CREATE EMPLOYEE + LOGIN
+    // GET NEXT EMPLOYEE NUMBER
+    //
+    // Used by the frontend to DISPLAY the recommendation.
+    //
+    // Example:
+    //
+    // EMP001
+    // EMP002
+    // EMP003
+    // EMP004 <- next
+    // ==========================================================
+
+    public String getNextEmployeeNumber() {
+
+        return employeeRepository
+                .generateNextEmployeeNumber();
+    }
+
+    // ==========================================================
+    // CREATE EMPLOYEE + LOGIN ACCOUNT
     // ==========================================================
 
     @Transactional
     public Long createEmployee(
-            Employee employee) {
+            Employee employee
+    ) {
 
         if (employee == null) {
 
@@ -99,6 +121,10 @@ public class EmployeeService {
                     "Employee data is required"
             );
         }
+
+        // ------------------------------------------------------
+        // Validate email
+        // ------------------------------------------------------
 
         if (employee.getEmail() == null
                 || employee.getEmail().isBlank()) {
@@ -115,12 +141,16 @@ public class EmployeeService {
 
         employee.setEmail(email);
 
+        // ------------------------------------------------------
+        // Get current company
+        // ------------------------------------------------------
+
         Long companyId =
                 companyContextService
                         .getCurrentCompanyId();
 
         // ------------------------------------------------------
-        // Check employee email
+        // Check employee email in current company
         // ------------------------------------------------------
 
         Integer employeeCount =
@@ -168,16 +198,25 @@ public class EmployeeService {
         }
 
         // ------------------------------------------------------
-        // Generate employee number if necessary
+        // IMPORTANT
+        //
+        // Do NOT trust employeeNumber from React.
+        //
+        // The backend generates the real employee number.
         // ------------------------------------------------------
 
-        if (employee.getEmployeeNumber() == null
-                || employee.getEmployeeNumber().isBlank()) {
+        String employeeNumber =
+                employeeRepository
+                        .generateNextEmployeeNumber();
 
-            throw new IllegalArgumentException(
-                    "Employee number is required"
-            );
-        }
+        employee.setEmployeeNumber(
+                employeeNumber
+        );
+
+        // Company is also controlled by backend.
+        employee.setCompanyId(
+                companyId
+        );
 
         // ------------------------------------------------------
         // Create employee
@@ -226,17 +265,22 @@ public class EmployeeService {
     }
 
     // ==========================================================
-    // UPDATE
+    // UPDATE EMPLOYEE
     // ==========================================================
 
     @Transactional
     public int updateEmployee(
             Long id,
-            Employee employee) {
+            Employee employee
+    ) {
 
         Long companyId =
                 companyContextService
                         .getCurrentCompanyId();
+
+        // ------------------------------------------------------
+        // Verify employee belongs to current company
+        // ------------------------------------------------------
 
         Employee existing =
                 employeeRepository.findById(
@@ -250,6 +294,10 @@ public class EmployeeService {
                     "Employee not found"
             );
         }
+
+        // ------------------------------------------------------
+        // Validate email
+        // ------------------------------------------------------
 
         if (employee.getEmail() == null
                 || employee.getEmail().isBlank()) {
@@ -265,6 +313,22 @@ public class EmployeeService {
                         .toLowerCase();
 
         employee.setEmail(newEmail);
+
+        // ------------------------------------------------------
+        // Employee number must NEVER change during edit
+        // ------------------------------------------------------
+
+        employee.setEmployeeNumber(
+                existing.getEmployeeNumber()
+        );
+
+        employee.setCompanyId(
+                companyId
+        );
+
+        // ------------------------------------------------------
+        // Check email is not used by another login account
+        // ------------------------------------------------------
 
         Integer existingAccount =
                 jdbcTemplate.queryForObject(
@@ -287,6 +351,10 @@ public class EmployeeService {
             );
         }
 
+        // ------------------------------------------------------
+        // Update employee
+        // ------------------------------------------------------
+
         int result =
                 employeeRepository.update(
                         id,
@@ -294,8 +362,13 @@ public class EmployeeService {
                         companyId
                 );
 
-        if (!existing.getEmail()
-                .equalsIgnoreCase(newEmail)) {
+        // ------------------------------------------------------
+        // Update login email if changed
+        // ------------------------------------------------------
+
+        if (existing.getEmail() == null
+                || !existing.getEmail()
+                        .equalsIgnoreCase(newEmail)) {
 
             jdbcTemplate.update(
                     """
@@ -312,16 +385,21 @@ public class EmployeeService {
     }
 
     // ==========================================================
-    // DELETE
+    // DELETE EMPLOYEE
     // ==========================================================
 
     @Transactional
     public int deleteEmployee(
-            Long id) {
+            Long id
+    ) {
 
         Long companyId =
                 companyContextService
                         .getCurrentCompanyId();
+
+        // ------------------------------------------------------
+        // Verify employee belongs to current company
+        // ------------------------------------------------------
 
         Employee employee =
                 employeeRepository.findById(
@@ -336,6 +414,10 @@ public class EmployeeService {
             );
         }
 
+        // ------------------------------------------------------
+        // Delete login account
+        // ------------------------------------------------------
+
         jdbcTemplate.update(
                 """
                 DELETE FROM staffhub_auth_users
@@ -343,6 +425,10 @@ public class EmployeeService {
                 """,
                 id
         );
+
+        // ------------------------------------------------------
+        // Delete employee
+        // ------------------------------------------------------
 
         return employeeRepository.delete(
                 id,

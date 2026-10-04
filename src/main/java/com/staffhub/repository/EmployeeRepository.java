@@ -1,6 +1,7 @@
 package com.staffhub.repository;
 
 import com.staffhub.model.Employee;
+
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -15,18 +16,24 @@ public class EmployeeRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
-    public EmployeeRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
+    public EmployeeRepository(
+            JdbcTemplate jdbcTemplate
+    ) {
+
+        this.jdbcTemplate =
+                jdbcTemplate;
     }
 
     // ==========================================================
-    // MAPPER
+    // MAP DATABASE ROW -> EMPLOYEE
     // ==========================================================
 
     private Employee mapEmployee(
-            java.sql.ResultSet rs) throws java.sql.SQLException {
+            java.sql.ResultSet rs
+    ) throws java.sql.SQLException {
 
-        Employee employee = new Employee();
+        Employee employee =
+                new Employee();
 
         employee.setId(
                 rs.getLong("id")
@@ -100,10 +107,12 @@ public class EmployeeRepository {
     }
 
     // ==========================================================
-    // GET ALL EMPLOYEES FOR COMPANY
+    // GET ALL EMPLOYEES FOR CURRENT COMPANY
     // ==========================================================
 
-    public List<Employee> findAll(Long companyId) {
+    public List<Employee> findAll(
+            Long companyId
+    ) {
 
         String sql = """
                 SELECT *
@@ -114,7 +123,8 @@ public class EmployeeRepository {
 
         return jdbcTemplate.query(
                 sql,
-                (rs, rowNum) -> mapEmployee(rs),
+                (rs, rowNum) ->
+                        mapEmployee(rs),
                 companyId
         );
     }
@@ -125,7 +135,8 @@ public class EmployeeRepository {
 
     public Employee findById(
             Long id,
-            Long companyId) {
+            Long companyId
+    ) {
 
         String sql = """
                 SELECT *
@@ -137,14 +148,86 @@ public class EmployeeRepository {
         List<Employee> results =
                 jdbcTemplate.query(
                         sql,
-                        (rs, rowNum) -> mapEmployee(rs),
+                        (rs, rowNum) ->
+                                mapEmployee(rs),
                         id,
                         companyId
                 );
 
-        return results.isEmpty()
-                ? null
-                : results.get(0);
+        if (results.isEmpty()) {
+            return null;
+        }
+
+        return results.get(0);
+    }
+
+    // ==========================================================
+    // GENERATE NEXT EMPLOYEE NUMBER
+    // ==========================================================
+    //
+    // Current database design has:
+    //
+    // employee_number VARCHAR(50) NOT NULL UNIQUE
+    //
+    // Therefore employee numbers are globally unique.
+    //
+    // Example:
+    //
+    // EMP001
+    // EMP002
+    // EMP003
+    // EMP004
+    //
+    // The frontend can request a recommendation through:
+    //
+    // GET /api/employees/next-number
+    //
+    // But CREATE also calls this method, so the frontend
+    // cannot force a duplicate/custom employee number.
+    //
+    // ==========================================================
+
+    public String generateNextEmployeeNumber() {
+
+        Integer nextNumber =
+                jdbcTemplate.queryForObject(
+                        """
+                        SELECT
+                            ISNULL(
+                                MAX(
+                                    TRY_CONVERT(
+                                        INT,
+                                        SUBSTRING(
+                                            employee_number,
+                                            4,
+                                            50
+                                        )
+                                    )
+                                ),
+                                0
+                            ) + 1
+                        FROM employees WITH (UPDLOCK, HOLDLOCK)
+                        WHERE employee_number LIKE 'EMP%'
+                          AND TRY_CONVERT(
+                                INT,
+                                SUBSTRING(
+                                    employee_number,
+                                    4,
+                                    50
+                                )
+                              ) IS NOT NULL
+                        """,
+                        Integer.class
+                );
+
+        if (nextNumber == null) {
+            nextNumber = 1;
+        }
+
+        return String.format(
+                "EMP%03d",
+                nextNumber
+        );
     }
 
     // ==========================================================
@@ -153,7 +236,8 @@ public class EmployeeRepository {
 
     public Long save(
             Employee employee,
-            Long companyId) {
+            Long companyId
+    ) {
 
         String sql = """
                 INSERT INTO employees
@@ -206,7 +290,10 @@ public class EmployeeRepository {
                                     Statement.RETURN_GENERATED_KEYS
                             );
 
-                    ps.setLong(1, companyId);
+                    ps.setLong(
+                            1,
+                            companyId
+                    );
 
                     ps.setString(
                             2,
@@ -279,7 +366,6 @@ public class EmployeeRepository {
                     );
 
                     return ps;
-
                 },
                 keyHolder
         );
@@ -297,13 +383,14 @@ public class EmployeeRepository {
     }
 
     // ==========================================================
-    // UPDATE
+    // UPDATE EMPLOYEE
     // ==========================================================
 
     public int update(
             Long id,
             Employee employee,
-            Long companyId) {
+            Long companyId
+    ) {
 
         String sql = """
                 UPDATE employees
@@ -328,32 +415,49 @@ public class EmployeeRepository {
 
         return jdbcTemplate.update(
                 sql,
+
                 employee.getEmployeeNumber(),
+
                 employee.getFirstName(),
+
                 employee.getLastName(),
+
                 employee.getEmail(),
+
                 employee.getPhone(),
+
                 employee.getDepartment(),
+
                 employee.getPosition(),
+
                 employee.getRole(),
+
                 employee.getEmploymentStatus(),
+
                 employee.getHireDate(),
+
                 employee.getAddress(),
+
                 employee.getEmergencyContact(),
+
                 employee.getSalary(),
+
                 employee.getGender(),
+
                 id,
+
                 companyId
         );
     }
 
     // ==========================================================
-    // DELETE
+    // DELETE EMPLOYEE
     // ==========================================================
 
     public int delete(
             Long id,
-            Long companyId) {
+            Long companyId
+    ) {
 
         return jdbcTemplate.update(
                 """

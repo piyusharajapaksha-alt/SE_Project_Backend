@@ -17,44 +17,93 @@ public class EmployeeController {
     private final EmployeeService employeeService;
 
     public EmployeeController(
-            EmployeeService employeeService) {
-
-        this.employeeService =
-                employeeService;
+            EmployeeService employeeService
+    ) {
+        this.employeeService = employeeService;
     }
+
+    // ==========================================================
+    // GET ALL
+    // ==========================================================
 
     @GetMapping
     public List<Employee> getAllEmployees() {
 
-        return employeeService
-                .getAllEmployees();
+        return employeeService.getAllEmployees();
     }
+
+    // ==========================================================
+    // GET NEXT EMPLOYEE NUMBER
+    //
+    // This is only a recommendation for the Add Employee form.
+    // The backend generates the final number again during CREATE.
+    // ==========================================================
+
+    @GetMapping("/next-number")
+    public ResponseEntity<?> getNextEmployeeNumber() {
+
+        try {
+
+            String employeeNumber =
+                    employeeService.getNextEmployeeNumber();
+
+            return ResponseEntity.ok(
+                    new EmployeeNumberResponse(
+                            employeeNumber
+                    )
+            );
+
+        } catch (Exception ex) {
+
+            ex.printStackTrace();
+
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(
+                            new ErrorResponse(
+                                    "Unable to generate employee number."
+                            )
+                    );
+        }
+    }
+
+    // ==========================================================
+    // GET BY ID
+    // ==========================================================
 
     @GetMapping("/{id}")
     public Employee getEmployeeById(
-            @PathVariable Long id) {
+            @PathVariable Long id
+    ) {
 
-        return employeeService
-                .getEmployeeById(id);
+        return employeeService.getEmployeeById(id);
     }
+
+    // ==========================================================
+    // CREATE
+    // ==========================================================
 
     @PostMapping
     public ResponseEntity<?> createEmployee(
-            @RequestBody Employee employee) {
+            @RequestBody Employee employee
+    ) {
 
         try {
 
             Long employeeId =
-                    employeeService
-                            .createEmployee(employee);
+                    employeeService.createEmployee(
+                            employee
+                    );
 
             return ResponseEntity
                     .status(HttpStatus.CREATED)
                     .body(
                             new EmployeeCreateResponse(
                                     employeeId,
+                                    employee.getEmployeeNumber(),
                                     employee.getEmail(),
-                                    "Employee created successfully. Login account created with temporary password."
+                                    "Employee created successfully. "
+                                            + "Login account created with the temporary password."
                             )
                     );
 
@@ -73,9 +122,7 @@ public class EmployeeController {
             ex.printStackTrace();
 
             return ResponseEntity
-                    .status(
-                            HttpStatus.INTERNAL_SERVER_ERROR
-                    )
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(
                             new ErrorResponse(
                                     "Employee creation failed."
@@ -84,10 +131,15 @@ public class EmployeeController {
         }
     }
 
+    // ==========================================================
+    // UPDATE
+    // ==========================================================
+
     @PutMapping("/{id}")
     public ResponseEntity<?> updateEmployee(
             @PathVariable Long id,
-            @RequestBody Employee employee) {
+            @RequestBody Employee employee
+    ) {
 
         try {
 
@@ -115,9 +167,7 @@ public class EmployeeController {
             ex.printStackTrace();
 
             return ResponseEntity
-                    .status(
-                            HttpStatus.INTERNAL_SERVER_ERROR
-                    )
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(
                             new ErrorResponse(
                                     "Employee update failed."
@@ -126,9 +176,14 @@ public class EmployeeController {
         }
     }
 
+    // ==========================================================
+    // DELETE
+    // ==========================================================
+
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteEmployee(
-            @PathVariable Long id) {
+            @PathVariable Long id
+    ) {
 
         try {
 
@@ -153,9 +208,7 @@ public class EmployeeController {
             ex.printStackTrace();
 
             return ResponseEntity
-                    .status(
-                            HttpStatus.INTERNAL_SERVER_ERROR
-                    )
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(
                             new ErrorResponse(
                                     "Employee deletion failed."
@@ -164,10 +217,19 @@ public class EmployeeController {
         }
     }
 
+    // ==========================================================
+    // RESPONSE RECORDS
+    // ==========================================================
+
     public record EmployeeCreateResponse(
             Long employeeId,
+            String employeeNumber,
             String email,
             String message
+    ) {}
+
+    public record EmployeeNumberResponse(
+            String employeeNumber
     ) {}
 
     public record ErrorResponse(

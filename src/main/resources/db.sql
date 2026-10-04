@@ -1538,3 +1538,1007 @@ PRINT '============================================';
 PRINT 'OWNER SEPARATION REPAIR COMPLETED';
 PRINT '============================================';
 GO
+
+
+USE StaffHub;
+GO
+
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+
+PRINT '============================================================';
+PRINT ' STAFFHUB MULTI-COMPANY ISOLATION MIGRATION - CORRECTED';
+PRINT ' SQL SERVER / SSMS';
+PRINT '============================================================';
+PRINT '';
+
+BEGIN TRY
+
+    BEGIN TRANSACTION;
+
+    /* ========================================================
+       0. BASIC VALIDATION
+       ======================================================== */
+
+    IF OBJECT_ID('dbo.companies', 'U') IS NULL
+        THROW 50001, 'dbo.companies does not exist.', 1;
+
+    IF OBJECT_ID('dbo.employees', 'U') IS NULL
+        THROW 50002, 'dbo.employees does not exist.', 1;
+
+    IF OBJECT_ID('dbo.staffhub_auth_users', 'U') IS NULL
+        THROW 50003, 'dbo.staffhub_auth_users does not exist.', 1;
+
+
+    /* ========================================================
+       1. ENSURE companies.owner_id EXISTS
+
+       IMPORTANT:
+       We do NOT use owner_employee_id.
+       ======================================================== */
+
+    IF COL_LENGTH('dbo.companies', 'owner_id') IS NULL
+    BEGIN
+        ALTER TABLE dbo.companies
+        ADD owner_id BIGINT NULL;
+
+        PRINT 'Added companies.owner_id';
+    END
+    ELSE
+    BEGIN
+        PRINT 'companies.owner_id already exists';
+    END;
+
+
+    /* ========================================================
+       2. ENSURE company_owners EXISTS
+
+       Only create it if the current database genuinely does
+       not contain it.
+       ======================================================== */
+
+    IF OBJECT_ID('dbo.company_owners', 'U') IS NULL
+    BEGIN
+
+        CREATE TABLE dbo.company_owners
+        (
+            id BIGINT IDENTITY(1,1) NOT NULL
+                CONSTRAINT PK_company_owners PRIMARY KEY,
+
+            first_name VARCHAR(100) NOT NULL,
+
+            last_name VARCHAR(100) NOT NULL,
+
+            email VARCHAR(150) NOT NULL,
+
+            phone VARCHAR(30) NULL,
+
+            created_at DATETIME2 NOT NULL
+                CONSTRAINT DF_company_owners_created_at
+                DEFAULT SYSDATETIME(),
+
+            updated_at DATETIME2 NULL,
+
+            CONSTRAINT UQ_company_owners_email
+                UNIQUE (email)
+        );
+
+        PRINT 'Created dbo.company_owners';
+
+    END
+    ELSE
+    BEGIN
+        PRINT 'dbo.company_owners already exists';
+    END;
+
+
+    /* ========================================================
+       3. ENSURE staffhub_auth_users.owner_id EXISTS
+       ======================================================== */
+
+    IF COL_LENGTH('dbo.staffhub_auth_users', 'owner_id') IS NULL
+    BEGIN
+
+        ALTER TABLE dbo.staffhub_auth_users
+        ADD owner_id BIGINT NULL;
+
+        PRINT 'Added staffhub_auth_users.owner_id';
+
+    END
+    ELSE
+    BEGIN
+        PRINT 'staffhub_auth_users.owner_id already exists';
+    END;
+
+
+    /* ========================================================
+       4. MAKE employee_id NULLABLE
+
+       Owner accounts:
+           employee_id = NULL
+           owner_id    = owner
+
+       Employee accounts:
+           employee_id = employee
+           owner_id    = NULL
+       ======================================================== */
+
+    IF EXISTS
+    (
+        SELECT 1
+        FROM sys.columns
+        WHERE object_id = OBJECT_ID('dbo.staffhub_auth_users')
+          AND name = 'employee_id'
+          AND is_nullable = 0
+    )
+    BEGIN
+
+        ALTER TABLE dbo.staffhub_auth_users
+        ALTER COLUMN employee_id BIGINT NULL;
+
+        PRINT 'Made staffhub_auth_users.employee_id nullable';
+
+    END;
+
+
+    /* ========================================================
+       5. ADD employees.company_id
+       ======================================================== */
+
+    IF COL_LENGTH('dbo.employees', 'company_id') IS NULL
+    BEGIN
+
+        ALTER TABLE dbo.employees
+        ADD company_id BIGINT NULL;
+
+        PRINT 'Added employees.company_id';
+
+    END
+    ELSE
+    BEGIN
+        PRINT 'employees.company_id already exists';
+    END;
+
+
+    /* ========================================================
+       6. VERIFY EXISTING COMPANY OWNERSHIP
+
+       We intentionally DO NOT use owner_employee_id.
+
+       If companies.owner_id already contains valid owners,
+       leave it untouched.
+       ======================================================== */
+
+    IF EXISTS
+    (
+        SELECT 1
+        FROM dbo.companies c
+        WHERE c.owner_id IS NOT NULL
+          AND NOT EXISTS
+          (
+              SELECT 1
+              FROM dbo.company_owners o
+              WHERE o.id = c.owner_id
+          )
+    )
+    BEGIN
+
+        THROW 50004,
+        'companies contains owner_id values that do not exist in company_owners. Fix those owner records before continuing.',
+        1;
+
+    END;
+
+
+    /* ========================================================
+       7. VERIFY AUTH OWNER REFERENCES
+       ======================================================== */
+
+    IF EXISTS
+    (
+        SELECT 1
+        FROM dbo.staffhub_auth_users a
+        WHERE a.owner_id IS NOT NULL
+          AND NOT EXISTS
+          (
+              SELECT 1
+              FROM dbo.company_owners o
+              WHERE o.id = a.owner_id
+          )
+    )
+    BEGIN
+
+        THROW 50005,
+        'staffhub_auth_users contains invalid owner_id values.',
+        1;
+
+    END;
+
+
+    /* ========================================================
+       8. CREATE companies -> company_owners FK
+       ======================================================== */
+
+    IF NOT EXISTS
+    (
+        SELECT 1
+        FROM sys.foreign_keys
+        WHERE parent_object_id = OBJECT_ID('dbo.companies')
+          AND referenced_object_id = OBJECT_ID('dbo.company_owners')
+    )
+    BEGIN
+
+        ALTER TABLE dbo.companies
+        ADD CONSTRAINT FK_companies_owner
+            FOREIGN KEY (owner_id)
+            REFERENCES dbo.company_owners(id);
+
+        PRINT 'Created companies.owner_id foreign key';
+
+    END;
+
+
+    /* ========================================================
+       9. CREATE auth -> owner FK
+       ======================================================== */
+
+    IF NOT EXISTS
+    (
+        SELECT 1
+        FROM sys.foreign_keys
+        WHERE parent_object_id =
+              OBJECT_ID('dbo.staffhub_auth_users')
+          AND referenced_object_id =
+              OBJECT_ID('dbo.company_owners')
+          AND EXISTS
+          (
+              SELECT 1
+              FROM sys.foreign_key_columns fkc
+              INNER JOIN sys.columns pc
+                  ON pc.object_id = fkc.parent_object_id
+                 AND pc.column_id = fkc.parent_column_id
+              WHERE fkc.constraint_object_id =
+                    sys.foreign_keys.object_id
+                AND pc.name = 'owner_id'
+          )
+    )
+    BEGIN
+
+        ALTER TABLE dbo.staffhub_auth_users
+        ADD CONSTRAINT FK_staffhub_auth_users_owner
+            FOREIGN KEY (owner_id)
+            REFERENCES dbo.company_owners(id);
+
+        PRINT 'Created auth owner foreign key';
+
+    END;
+
+
+    /* ========================================================
+       10. CREATE account principal validation
+       ======================================================== */
+
+    IF NOT EXISTS
+    (
+        SELECT 1
+        FROM sys.check_constraints
+        WHERE parent_object_id =
+              OBJECT_ID('dbo.staffhub_auth_users')
+          AND name =
+              'CK_staffhub_auth_users_one_principal'
+    )
+    BEGIN
+
+        ALTER TABLE dbo.staffhub_auth_users
+        ADD CONSTRAINT CK_staffhub_auth_users_one_principal
+        CHECK
+        (
+            (
+                employee_id IS NOT NULL
+                AND owner_id IS NULL
+            )
+            OR
+            (
+                employee_id IS NULL
+                AND owner_id IS NOT NULL
+            )
+        );
+
+        PRINT 'Created auth principal validation';
+
+    END;
+
+
+    /* ========================================================
+       11. CREATE COMPANY INDEX ON EMPLOYEES
+       ======================================================== */
+
+    IF NOT EXISTS
+    (
+        SELECT 1
+        FROM sys.indexes
+        WHERE object_id = OBJECT_ID('dbo.employees')
+          AND name = 'IX_employees_company_id'
+    )
+    BEGIN
+
+        CREATE INDEX IX_employees_company_id
+        ON dbo.employees(company_id);
+
+        PRINT 'Created IX_employees_company_id';
+
+    END;
+
+
+    /* ========================================================
+       12. BACKFILL EMPLOYEE COMPANY IDs
+
+       We ONLY use information that already exists.
+
+       Rule:
+       If an employee's authentication account somehow already
+       identifies an owner/company relationship, use it.
+
+       We never guess between multiple companies.
+       ======================================================== */
+
+    /*
+       Employees whose auth account has employee_id and whose
+       owner_id is also populated are inconsistent.
+    */
+
+    IF EXISTS
+    (
+        SELECT 1
+        FROM dbo.staffhub_auth_users
+        WHERE employee_id IS NOT NULL
+          AND owner_id IS NOT NULL
+    )
+    BEGIN
+
+        THROW 50006,
+        'Invalid auth data: an account has both employee_id and owner_id.',
+        1;
+
+    END;
+
+
+    /* ========================================================
+       13. COMPANY-SCOPED TABLES
+
+       Add company_id to tables that do not already have it.
+       ======================================================== */
+
+    IF COL_LENGTH('dbo.training_programs', 'company_id') IS NULL
+    BEGIN
+        ALTER TABLE dbo.training_programs
+        ADD company_id BIGINT NULL;
+
+        PRINT 'Added training_programs.company_id';
+    END;
+
+
+    IF COL_LENGTH('dbo.grievances', 'company_id') IS NULL
+    BEGIN
+        ALTER TABLE dbo.grievances
+        ADD company_id BIGINT NULL;
+
+        PRINT 'Added grievances.company_id';
+    END;
+
+
+    IF COL_LENGTH('dbo.performance_reviews', 'company_id') IS NULL
+    BEGIN
+        ALTER TABLE dbo.performance_reviews
+        ADD company_id BIGINT NULL;
+
+        PRINT 'Added performance_reviews.company_id';
+    END;
+
+
+    IF COL_LENGTH('dbo.leave_requests', 'company_id') IS NULL
+    BEGIN
+        ALTER TABLE dbo.leave_requests
+        ADD company_id BIGINT NULL;
+
+        PRINT 'Added leave_requests.company_id';
+    END;
+
+
+    IF COL_LENGTH('dbo.events', 'company_id') IS NULL
+    BEGIN
+        ALTER TABLE dbo.events
+        ADD company_id BIGINT NULL;
+
+        PRINT 'Added events.company_id';
+    END;
+
+
+    IF COL_LENGTH('dbo.event_registrations', 'company_id') IS NULL
+    BEGIN
+        ALTER TABLE dbo.event_registrations
+        ADD company_id BIGINT NULL;
+
+        PRINT 'Added event_registrations.company_id';
+    END;
+
+
+    IF COL_LENGTH('dbo.grievance_responses', 'company_id') IS NULL
+    BEGIN
+        ALTER TABLE dbo.grievance_responses
+        ADD company_id BIGINT NULL;
+
+        PRINT 'Added grievance_responses.company_id';
+    END;
+
+
+    IF COL_LENGTH('dbo.training_assignments', 'company_id') IS NULL
+    BEGIN
+        ALTER TABLE dbo.training_assignments
+        ADD company_id BIGINT NULL;
+
+        PRINT 'Added training_assignments.company_id';
+    END;
+
+
+    IF COL_LENGTH('dbo.training_registrations', 'company_id') IS NULL
+    BEGIN
+        ALTER TABLE dbo.training_registrations
+        ADD company_id BIGINT NULL;
+
+        PRINT 'Added training_registrations.company_id';
+    END;
+
+
+    IF COL_LENGTH('dbo.training_attendance', 'company_id') IS NULL
+    BEGIN
+        ALTER TABLE dbo.training_attendance
+        ADD company_id BIGINT NULL;
+
+        PRINT 'Added training_attendance.company_id';
+    END;
+
+
+    IF COL_LENGTH('dbo.training_completion', 'company_id') IS NULL
+    BEGIN
+        ALTER TABLE dbo.training_completion
+        ADD company_id BIGINT NULL;
+
+        PRINT 'Added training_completion.company_id';
+    END;
+
+
+    IF COL_LENGTH('dbo.attendance_records', 'company_id') IS NULL
+    BEGIN
+        ALTER TABLE dbo.attendance_records
+        ADD company_id BIGINT NULL;
+
+        PRINT 'Added attendance_records.company_id';
+    END;
+
+
+    IF COL_LENGTH('dbo.attendance_events', 'company_id') IS NULL
+    BEGIN
+        ALTER TABLE dbo.attendance_events
+        ADD company_id BIGINT NULL;
+
+        PRINT 'Added attendance_events.company_id';
+    END;
+
+
+    IF COL_LENGTH('dbo.attendance_monitor', 'company_id') IS NULL
+    BEGIN
+        ALTER TABLE dbo.attendance_monitor
+        ADD company_id BIGINT NULL;
+
+        PRINT 'Added attendance_monitor.company_id';
+    END;
+
+
+    IF COL_LENGTH('dbo.attendance_schedules', 'company_id') IS NULL
+    BEGIN
+        ALTER TABLE dbo.attendance_schedules
+        ADD company_id BIGINT NULL;
+
+        PRINT 'Added attendance_schedules.company_id';
+    END;
+
+
+    IF COL_LENGTH('dbo.attendance_monitor_sessions', 'company_id') IS NULL
+    BEGIN
+        ALTER TABLE dbo.attendance_monitor_sessions
+        ADD company_id BIGINT NULL;
+
+        PRINT 'Added attendance_monitor_sessions.company_id';
+    END;
+
+
+    /* ========================================================
+       14. SAFE BACKFILL THROUGH EMPLOYEE RELATIONSHIPS
+       ======================================================== */
+
+    /* ---------- LEAVE ---------- */
+
+    UPDATE l
+    SET l.company_id = e.company_id
+    FROM dbo.leave_requests l
+    INNER JOIN dbo.employees e
+        ON e.employee_number = l.employee_id
+    WHERE l.company_id IS NULL
+      AND e.company_id IS NOT NULL;
+
+
+    /* ---------- PERFORMANCE ---------- */
+
+    UPDATE p
+    SET p.company_id = e.company_id
+    FROM dbo.performance_reviews p
+    INNER JOIN dbo.employees e
+        ON e.employee_number = p.employee_id
+    WHERE p.company_id IS NULL
+      AND e.company_id IS NOT NULL;
+
+
+    /* ---------- GRIEVANCE ---------- */
+
+    UPDATE g
+    SET g.company_id = e.company_id
+    FROM dbo.grievances g
+    INNER JOIN dbo.employees e
+        ON e.employee_number = g.employee_id
+    WHERE g.company_id IS NULL
+      AND e.company_id IS NOT NULL;
+
+
+    /* ---------- GRIEVANCE RESPONSES ---------- */
+
+    UPDATE r
+    SET r.company_id = g.company_id
+    FROM dbo.grievance_responses r
+    INNER JOIN dbo.grievances g
+        ON g.id = r.grievance_id
+    WHERE r.company_id IS NULL
+      AND g.company_id IS NOT NULL;
+
+
+    /* ---------- EVENTS ---------- */
+
+    UPDATE ev
+    SET ev.company_id = e.company_id
+    FROM dbo.events ev
+    INNER JOIN dbo.employees e
+        ON e.employee_number = ev.organizer_id
+    WHERE ev.company_id IS NULL
+      AND e.company_id IS NOT NULL;
+
+
+    /* ---------- EVENT REGISTRATIONS ---------- */
+
+    UPDATE er
+    SET er.company_id = ev.company_id
+    FROM dbo.event_registrations er
+    INNER JOIN dbo.events ev
+        ON ev.id = er.event_id
+    WHERE er.company_id IS NULL
+      AND ev.company_id IS NOT NULL;
+
+
+    /* ---------- TRAINING ASSIGNMENTS ---------- */
+
+    UPDATE ta
+    SET ta.company_id = e.company_id
+    FROM dbo.training_assignments ta
+    INNER JOIN dbo.employees e
+        ON e.employee_number = ta.employee_id
+    WHERE ta.company_id IS NULL
+      AND e.company_id IS NOT NULL;
+
+
+    /*
+       Training itself has no employee_id.
+
+       Therefore we derive its company only when ALL of its
+       existing assignments belong to the SAME company.
+    */
+
+    UPDATE t
+    SET t.company_id = x.company_id
+    FROM dbo.training_programs t
+    INNER JOIN
+    (
+        SELECT
+            ta.training_id,
+            MIN(e.company_id) AS company_id
+        FROM dbo.training_assignments ta
+        INNER JOIN dbo.employees e
+            ON e.employee_number = ta.employee_id
+        WHERE e.company_id IS NOT NULL
+        GROUP BY ta.training_id
+        HAVING COUNT(DISTINCT e.company_id) = 1
+    ) x
+        ON x.training_id = t.id
+    WHERE t.company_id IS NULL;
+
+
+    /* ---------- TRAINING REGISTRATIONS ---------- */
+
+    UPDATE tr
+    SET tr.company_id = t.company_id
+    FROM dbo.training_registrations tr
+    INNER JOIN dbo.training_programs t
+        ON t.id = tr.training_id
+    WHERE tr.company_id IS NULL
+      AND t.company_id IS NOT NULL;
+
+
+    /* ---------- TRAINING ATTENDANCE ---------- */
+
+    UPDATE ta
+    SET ta.company_id = t.company_id
+    FROM dbo.training_attendance ta
+    INNER JOIN dbo.training_programs t
+        ON t.id = ta.training_id
+    WHERE ta.company_id IS NULL
+      AND t.company_id IS NOT NULL;
+
+
+    /* ---------- TRAINING COMPLETION ---------- */
+
+    UPDATE tc
+    SET tc.company_id = t.company_id
+    FROM dbo.training_completion tc
+    INNER JOIN dbo.training_programs t
+        ON t.id = tc.training_id
+    WHERE tc.company_id IS NULL
+      AND t.company_id IS NOT NULL;
+
+
+    /* ---------- ATTENDANCE ---------- */
+
+    UPDATE ar
+    SET ar.company_id = e.company_id
+    FROM dbo.attendance_records ar
+    INNER JOIN dbo.employees e
+        ON e.id = ar.employee_id
+    WHERE ar.company_id IS NULL
+      AND e.company_id IS NOT NULL;
+
+
+    /* ---------- ATTENDANCE EVENTS ---------- */
+
+    UPDATE ae
+    SET ae.company_id = e.company_id
+    FROM dbo.attendance_events ae
+    INNER JOIN dbo.employees e
+        ON e.id = ae.employee_id
+    WHERE ae.company_id IS NULL
+      AND e.company_id IS NOT NULL;
+
+
+    /* ---------- MONITOR ---------- */
+
+    /*
+       A monitor has no employee relationship.
+
+       If there is exactly ONE company, it is safe to assign it.
+       If there are multiple companies, we refuse to guess.
+    */
+
+    IF
+    (
+        SELECT COUNT(*)
+        FROM dbo.companies
+    ) = 1
+    BEGIN
+
+        UPDATE am
+        SET am.company_id =
+        (
+            SELECT TOP 1 id
+            FROM dbo.companies
+        )
+        WHERE am.company_id IS NULL;
+
+        UPDATE ass
+        SET ass.company_id =
+        (
+            SELECT TOP 1 id
+            FROM dbo.companies
+        )
+        WHERE ass.company_id IS NULL;
+
+        UPDATE ams
+        SET ams.company_id =
+        (
+            SELECT TOP 1 id
+            FROM dbo.companies
+        )
+        WHERE ams.company_id IS NULL;
+
+    END;
+
+
+    /* ========================================================
+       15. CHECK FOR UNRESOLVED EMPLOYEE OWNERSHIP
+       ======================================================== */
+
+    IF EXISTS
+    (
+        SELECT 1
+        FROM dbo.employees
+        WHERE company_id IS NULL
+    )
+    BEGIN
+
+        PRINT '';
+        PRINT '============================================================';
+        PRINT 'WARNING: SOME EMPLOYEES HAVE NO COMPANY';
+        PRINT '============================================================';
+
+        SELECT
+            id,
+            employee_number,
+            first_name,
+            last_name,
+            email
+        FROM dbo.employees
+        WHERE company_id IS NULL
+        ORDER BY id;
+
+        THROW 50007,
+        'Migration stopped: one or more employees have no company_id. Assign those employees to the correct company before rerunning.',
+        1;
+
+    END;
+
+
+    /* ========================================================
+       16. CHECK FOR CROSS-COMPANY EVENT REGISTRATIONS
+       ======================================================== */
+
+    IF EXISTS
+    (
+        SELECT 1
+        FROM dbo.event_registrations er
+        INNER JOIN dbo.events ev
+            ON ev.id = er.event_id
+        INNER JOIN dbo.employees e
+            ON e.employee_number = er.employee_id
+        WHERE ev.company_id IS NOT NULL
+          AND e.company_id IS NOT NULL
+          AND ev.company_id <> e.company_id
+    )
+    BEGIN
+
+        THROW 50008,
+        'Cross-company event registration detected. Existing data must be corrected before isolation can be enforced.',
+        1;
+
+    END;
+
+
+    /* ========================================================
+       17. CHECK TRAINING CROSS-COMPANY ASSIGNMENTS
+       ======================================================== */
+
+    IF EXISTS
+    (
+        SELECT 1
+        FROM dbo.training_assignments ta
+        INNER JOIN dbo.training_programs t
+            ON t.id = ta.training_id
+        INNER JOIN dbo.employees e
+            ON e.employee_number = ta.employee_id
+        WHERE t.company_id IS NOT NULL
+          AND e.company_id IS NOT NULL
+          AND t.company_id <> e.company_id
+    )
+    BEGIN
+
+        THROW 50009,
+        'Cross-company training assignment detected. Existing data must be corrected before isolation can be enforced.',
+        1;
+
+    END;
+
+
+    /* ========================================================
+       18. INDEXES
+       ======================================================== */
+
+    IF NOT EXISTS
+    (
+        SELECT 1 FROM sys.indexes
+        WHERE object_id = OBJECT_ID('dbo.training_programs')
+          AND name = 'IX_training_programs_company_id'
+    )
+        CREATE INDEX IX_training_programs_company_id
+        ON dbo.training_programs(company_id);
+
+
+    IF NOT EXISTS
+    (
+        SELECT 1 FROM sys.indexes
+        WHERE object_id = OBJECT_ID('dbo.events')
+          AND name = 'IX_events_company_id'
+    )
+        CREATE INDEX IX_events_company_id
+        ON dbo.events(company_id);
+
+
+    IF NOT EXISTS
+    (
+        SELECT 1 FROM sys.indexes
+        WHERE object_id = OBJECT_ID('dbo.leave_requests')
+          AND name = 'IX_leave_requests_company_id'
+    )
+        CREATE INDEX IX_leave_requests_company_id
+        ON dbo.leave_requests(company_id);
+
+
+    IF NOT EXISTS
+    (
+        SELECT 1 FROM sys.indexes
+        WHERE object_id = OBJECT_ID('dbo.performance_reviews')
+          AND name = 'IX_performance_reviews_company_id'
+    )
+        CREATE INDEX IX_performance_reviews_company_id
+        ON dbo.performance_reviews(company_id);
+
+
+    IF NOT EXISTS
+    (
+        SELECT 1 FROM sys.indexes
+        WHERE object_id = OBJECT_ID('dbo.grievances')
+          AND name = 'IX_grievances_company_id'
+    )
+        CREATE INDEX IX_grievances_company_id
+        ON dbo.grievances(company_id);
+
+
+    IF NOT EXISTS
+    (
+        SELECT 1 FROM sys.indexes
+        WHERE object_id = OBJECT_ID('dbo.attendance_records')
+          AND name = 'IX_attendance_records_company_id'
+    )
+        CREATE INDEX IX_attendance_records_company_id
+        ON dbo.attendance_records(company_id);
+
+
+    IF NOT EXISTS
+    (
+        SELECT 1 FROM sys.indexes
+        WHERE object_id = OBJECT_ID('dbo.attendance_events')
+          AND name = 'IX_attendance_events_company_id'
+    )
+        CREATE INDEX IX_attendance_events_company_id
+        ON dbo.attendance_events(company_id);
+
+
+    IF NOT EXISTS
+    (
+        SELECT 1 FROM sys.indexes
+        WHERE object_id = OBJECT_ID('dbo.attendance_monitor')
+          AND name = 'IX_attendance_monitor_company_id'
+    )
+        CREATE INDEX IX_attendance_monitor_company_id
+        ON dbo.attendance_monitor(company_id);
+
+
+    IF NOT EXISTS
+    (
+        SELECT 1 FROM sys.indexes
+        WHERE object_id = OBJECT_ID('dbo.attendance_schedules')
+          AND name = 'IX_attendance_schedules_company_id'
+    )
+        CREATE INDEX IX_attendance_schedules_company_id
+        ON dbo.attendance_schedules(company_id);
+
+
+    IF NOT EXISTS
+    (
+        SELECT 1 FROM sys.indexes
+        WHERE object_id = OBJECT_ID('dbo.attendance_monitor_sessions')
+          AND name = 'IX_attendance_monitor_sessions_company_id'
+    )
+        CREATE INDEX IX_attendance_monitor_sessions_company_id
+        ON dbo.attendance_monitor_sessions(company_id);
+
+
+    /* ========================================================
+       19. FINAL VALIDATION
+       ======================================================== */
+
+    PRINT '';
+    PRINT '============================================================';
+    PRINT 'FINAL COMPANY COUNTS';
+    PRINT '============================================================';
+
+    SELECT
+        c.id AS company_id,
+        c.company_code,
+        c.company_name,
+        COUNT(e.id) AS employee_count
+    FROM dbo.companies c
+    LEFT JOIN dbo.employees e
+        ON e.company_id = c.id
+    GROUP BY
+        c.id,
+        c.company_code,
+        c.company_name
+    ORDER BY c.id;
+
+
+    PRINT '';
+    PRINT '============================================================';
+    PRINT 'UNASSIGNED DATA CHECK';
+    PRINT '============================================================';
+
+    SELECT 'employees' AS table_name, COUNT(*) AS unassigned
+    FROM dbo.employees
+    WHERE company_id IS NULL
+
+    UNION ALL
+
+    SELECT 'training_programs', COUNT(*)
+    FROM dbo.training_programs
+    WHERE company_id IS NULL
+
+    UNION ALL
+
+    SELECT 'events', COUNT(*)
+    FROM dbo.events
+    WHERE company_id IS NULL
+
+    UNION ALL
+
+    SELECT 'leave_requests', COUNT(*)
+    FROM dbo.leave_requests
+    WHERE company_id IS NULL
+
+    UNION ALL
+
+    SELECT 'performance_reviews', COUNT(*)
+    FROM dbo.performance_reviews
+    WHERE company_id IS NULL
+
+    UNION ALL
+
+    SELECT 'grievances', COUNT(*)
+    FROM dbo.grievances
+    WHERE company_id IS NULL
+
+    UNION ALL
+
+    SELECT 'attendance_records', COUNT(*)
+    FROM dbo.attendance_records
+    WHERE company_id IS NULL;
+
+
+    COMMIT TRANSACTION;
+
+    PRINT '';
+    PRINT '============================================================';
+    PRINT ' MULTI-COMPANY DATABASE MIGRATION SUCCESSFUL';
+    PRINT '============================================================';
+
+END TRY
+BEGIN CATCH
+
+    IF XACT_STATE() <> 0
+        ROLLBACK TRANSACTION;
+
+    PRINT '';
+    PRINT '============================================================';
+    PRINT ' MIGRATION FAILED - ALL CHANGES ROLLED BACK';
+    PRINT '============================================================';
+
+    PRINT 'Error number: ' + CAST(ERROR_NUMBER() AS VARCHAR(20));
+    PRINT 'Error line:   ' + CAST(ERROR_LINE() AS VARCHAR(20));
+    PRINT 'Error message: ' + ERROR_MESSAGE();
+
+    THROW;
+
+END CATCH;
+GO
