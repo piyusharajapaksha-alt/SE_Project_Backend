@@ -20,6 +20,7 @@ public class AttendanceRepository {
 
     public AttendanceRecord findByEmployeeAndDate(
             Long employeeId,
+            Long companyId,
             LocalDate date
     ) {
 
@@ -32,14 +33,18 @@ public class AttendanceRepository {
                             e.first_name,
                             e.last_name,
                             e.department
-                        FROM attendance_records a
-                        INNER JOIN employees e
+                        FROM dbo.attendance_records a
+                        INNER JOIN dbo.employees e
                             ON e.id = a.employee_id
                         WHERE a.employee_id = ?
+                          AND a.company_id = ?
+                          AND e.company_id = ?
                           AND a.attendance_date = ?
                         """,
                         this::map,
                         employeeId,
+                        companyId,
+                        companyId,
                         date
                 );
 
@@ -49,16 +54,19 @@ public class AttendanceRepository {
     }
 
     public AttendanceRecord findTodayByEmployee(
-            Long employeeId
+            Long employeeId,
+            Long companyId
     ) {
         return findByEmployeeAndDate(
                 employeeId,
+                companyId,
                 LocalDate.now()
         );
     }
 
     public List<AttendanceRecord> findByEmployee(
-            Long employeeId
+            Long employeeId,
+            Long companyId
     ) {
 
         return jdbc.query(
@@ -69,20 +77,25 @@ public class AttendanceRepository {
                     e.first_name,
                     e.last_name,
                     e.department
-                FROM attendance_records a
-                INNER JOIN employees e
+                FROM dbo.attendance_records a
+                INNER JOIN dbo.employees e
                     ON e.id = a.employee_id
                 WHERE a.employee_id = ?
+                  AND a.company_id = ?
+                  AND e.company_id = ?
                 ORDER BY
                     a.attendance_date DESC,
                     a.check_in DESC
                 """,
                 this::map,
-                employeeId
+                employeeId,
+                companyId,
+                companyId
         );
     }
 
     public List<AttendanceRecord> findByDate(
+            Long companyId,
             LocalDate date
     ) {
 
@@ -94,24 +107,30 @@ public class AttendanceRepository {
                     e.first_name,
                     e.last_name,
                     e.department
-                FROM attendance_records a
-                INNER JOIN employees e
+                FROM dbo.attendance_records a
+                INNER JOIN dbo.employees e
                     ON e.id = a.employee_id
-                WHERE a.attendance_date = ?
+                WHERE a.company_id = ?
+                  AND e.company_id = ?
+                  AND a.attendance_date = ?
                 ORDER BY
                     CASE
-                        WHEN a.check_in IS NULL THEN 1
+                        WHEN a.check_in IS NULL
+                        THEN 1
                         ELSE 0
                     END,
                     a.check_in
                 """,
                 this::map,
+                companyId,
+                companyId,
                 date
         );
     }
 
     public Long create(
             Long employeeId,
+            Long companyId,
             LocalDate date,
             LocalDateTime checkIn,
             String method,
@@ -121,8 +140,9 @@ public class AttendanceRepository {
 
         jdbc.update(
                 """
-                INSERT INTO attendance_records
+                INSERT INTO dbo.attendance_records
                 (
+                    company_id,
                     employee_id,
                     attendance_date,
                     check_in,
@@ -130,8 +150,9 @@ public class AttendanceRepository {
                     check_in_method,
                     qr_session_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
+                companyId,
                 employeeId,
                 date,
                 Timestamp.valueOf(checkIn),
@@ -141,96 +162,93 @@ public class AttendanceRepository {
         );
 
         return jdbc.queryForObject(
-                "SELECT CAST(SCOPE_IDENTITY() AS BIGINT)",
+                """
+                SELECT CAST(
+                    SCOPE_IDENTITY()
+                    AS BIGINT
+                )
+                """,
                 Long.class
         );
     }
 
     public void updateCheckOut(
             Long id,
+            Long companyId,
             LocalDateTime checkOut,
             String method
     ) {
 
-        jdbc.update(
-                """
-                UPDATE attendance_records
-                SET
-                    check_out = ?,
-                    check_out_method = ?,
-                    updated_at = SYSDATETIME()
-                WHERE id = ?
-                  AND check_out IS NULL
-                """,
-                Timestamp.valueOf(checkOut),
-                method,
-                id
-        );
+        int updated =
+                jdbc.update(
+                        """
+                        UPDATE dbo.attendance_records
+                        SET
+                            check_out = ?,
+                            check_out_method = ?,
+                            updated_at = SYSDATETIME()
+                        WHERE id = ?
+                          AND company_id = ?
+                          AND check_out IS NULL
+                        """,
+                        Timestamp.valueOf(checkOut),
+                        method,
+                        id,
+                        companyId
+                );
+
+        if (updated == 0) {
+            throw new IllegalArgumentException(
+                    "Attendance record does not belong to your company"
+            );
+        }
     }
 
     public void updateCorrection(
             Long id,
+            Long companyId,
             LocalDateTime checkIn,
             LocalDateTime checkOut,
             String status,
             String reason
     ) {
 
-        jdbc.update(
-                """
-                UPDATE attendance_records
-                SET
-                    check_in = ?,
-                    check_out = ?,
-                    status = ?,
-                    manual_correction = 1,
-                    correction_reason = ?,
-                    updated_at = SYSDATETIME()
-                WHERE id = ?
-                """,
-                checkIn == null
-                        ? null
-                        : Timestamp.valueOf(checkIn),
-
-                checkOut == null
-                        ? null
-                        : Timestamp.valueOf(checkOut),
-
-                status,
-                reason,
-                id
-        );
-    }
-
-    public boolean employeeExists(
-            Long employeeId
-    ) {
-
-        Integer count =
-                jdbc.queryForObject(
+        int updated =
+                jdbc.update(
                         """
-                        SELECT COUNT(*)
-                        FROM employees
+                        UPDATE dbo.attendance_records
+                        SET
+                            check_in = ?,
+                            check_out = ?,
+                            status = ?,
+                            manual_correction = 1,
+                            correction_reason = ?,
+                            updated_at = SYSDATETIME()
                         WHERE id = ?
-                          AND employment_status = 'Active'
+                          AND company_id = ?
                         """,
-                        Integer.class,
-                        employeeId
+                        checkIn == null
+                                ? null
+                                : Timestamp.valueOf(checkIn),
+                        checkOut == null
+                                ? null
+                                : Timestamp.valueOf(checkOut),
+                        status,
+                        reason,
+                        id,
+                        companyId
                 );
 
-        return count != null && count > 0;
+        if (updated == 0) {
+            throw new IllegalArgumentException(
+                    "Attendance record does not belong to your company"
+            );
+        }
     }
 
-    /*
-     * Resolve:
-     *
-     * EMP001 -> employees.id
-     * EMP002 -> employees.id
-     * 1      -> employees.id
-     * 2      -> employees.id
-     */
     public Long resolveEmployeeId(
-            String employeeIdentifier
+            String employeeIdentifier,
+            Long companyId
     ) {
 
         if (
@@ -246,16 +264,20 @@ public class AttendanceRepository {
         List<Long> result =
                 jdbc.query(
                         """
-                        SELECT TOP 1 id
-                        FROM employees
-                        WHERE employment_status = 'Active'
+                        SELECT TOP 1 e.id
+                        FROM dbo.employees e
+                        WHERE e.company_id = ?
+                          AND e.employment_status = 'Active'
                           AND (
-                              employee_number = ?
-                              OR CAST(id AS VARCHAR(50)) = ?
+                              e.employee_number = ?
+                              OR CAST(
+                                  e.id AS VARCHAR(50)
+                              ) = ?
                           )
                         """,
                         (rs, row) ->
                                 rs.getLong("id"),
+                        companyId,
                         value,
                         value
                 );
@@ -265,21 +287,9 @@ public class AttendanceRepository {
                 : result.get(0);
     }
 
-    /*
-     * IMPORTANT:
-     *
-     * Leave module stores employee_id as EMP001,
-     * while attendance_records stores the numeric
-     * employees.id.
-     *
-     * Therefore we compare:
-     *
-     * employees.employee_number
-     * =
-     * leave_requests.employee_id
-     */
     public boolean employeeOnApprovedLeave(
             String employeeIdentifier,
+            Long companyId,
             LocalDate date
     ) {
 
@@ -297,20 +307,26 @@ public class AttendanceRepository {
                 jdbc.queryForObject(
                         """
                         SELECT COUNT(*)
-                        FROM leave_requests l
-                        INNER JOIN employees e
-                            ON e.employee_number = l.employee_id
-                        WHERE
-                            (
-                                e.employee_number = ?
-                                OR CAST(e.id AS VARCHAR(50)) = ?
-                            )
-                            AND l.status = 'Approved'
-                            AND ? BETWEEN
-                                l.start_date
-                                AND l.end_date
+                        FROM dbo.leave_requests l
+                        INNER JOIN dbo.employees e
+                            ON e.employee_number =
+                               l.employee_id
+                        WHERE e.company_id = ?
+                          AND l.company_id = ?
+                          AND (
+                              e.employee_number = ?
+                              OR CAST(
+                                  e.id AS VARCHAR(50)
+                              ) = ?
+                          )
+                          AND l.status = 'Approved'
+                          AND ? BETWEEN
+                              l.start_date
+                              AND l.end_date
                         """,
                         Integer.class,
+                        companyId,
+                        companyId,
                         value,
                         value,
                         date
@@ -320,16 +336,20 @@ public class AttendanceRepository {
                 && count > 0;
     }
 
-    public int countActiveEmployees() {
+    public int countActiveEmployees(
+            Long companyId
+    ) {
 
         Integer count =
                 jdbc.queryForObject(
                         """
                         SELECT COUNT(*)
-                        FROM employees
-                        WHERE employment_status = 'Active'
+                        FROM dbo.employees
+                        WHERE company_id = ?
+                          AND employment_status = 'Active'
                         """,
-                        Integer.class
+                        Integer.class,
+                        companyId
                 );
 
         return count == null
@@ -338,6 +358,7 @@ public class AttendanceRepository {
     }
 
     public int countEmployeesOnApprovedLeave(
+            Long companyId,
             LocalDate date
     ) {
 
@@ -345,17 +366,21 @@ public class AttendanceRepository {
                 jdbc.queryForObject(
                         """
                         SELECT COUNT(DISTINCT e.id)
-                        FROM employees e
-                        INNER JOIN leave_requests l
+                        FROM dbo.employees e
+                        INNER JOIN dbo.leave_requests l
                             ON l.employee_id =
                                e.employee_number
-                        WHERE e.employment_status = 'Active'
+                        WHERE e.company_id = ?
+                          AND l.company_id = ?
+                          AND e.employment_status = 'Active'
                           AND l.status = 'Approved'
                           AND ? BETWEEN
                               l.start_date
                               AND l.end_date
                         """,
                         Integer.class,
+                        companyId,
+                        companyId,
                         date
                 );
 
@@ -365,6 +390,7 @@ public class AttendanceRepository {
     }
 
     public int countAttended(
+            Long companyId,
             LocalDate date
     ) {
 
@@ -372,11 +398,13 @@ public class AttendanceRepository {
                 jdbc.queryForObject(
                         """
                         SELECT COUNT(*)
-                        FROM attendance_records
-                        WHERE attendance_date = ?
+                        FROM dbo.attendance_records
+                        WHERE company_id = ?
+                          AND attendance_date = ?
                           AND check_in IS NOT NULL
                         """,
                         Integer.class,
+                        companyId,
                         date
                 );
 
@@ -386,6 +414,7 @@ public class AttendanceRepository {
     }
 
     public int countCheckedOut(
+            Long companyId,
             LocalDate date
     ) {
 
@@ -393,11 +422,13 @@ public class AttendanceRepository {
                 jdbc.queryForObject(
                         """
                         SELECT COUNT(*)
-                        FROM attendance_records
-                        WHERE attendance_date = ?
+                        FROM dbo.attendance_records
+                        WHERE company_id = ?
+                          AND attendance_date = ?
                           AND check_out IS NOT NULL
                         """,
                         Integer.class,
+                        companyId,
                         date
                 );
 
@@ -407,6 +438,7 @@ public class AttendanceRepository {
     }
 
     public int countCurrentlyWorking(
+            Long companyId,
             LocalDate date
     ) {
 
@@ -414,12 +446,14 @@ public class AttendanceRepository {
                 jdbc.queryForObject(
                         """
                         SELECT COUNT(*)
-                        FROM attendance_records
-                        WHERE attendance_date = ?
+                        FROM dbo.attendance_records
+                        WHERE company_id = ?
+                          AND attendance_date = ?
                           AND check_in IS NOT NULL
                           AND check_out IS NULL
                         """,
                         Integer.class,
+                        companyId,
                         date
                 );
 
@@ -429,6 +463,7 @@ public class AttendanceRepository {
     }
 
     public int countLate(
+            Long companyId,
             LocalDate date
     ) {
 
@@ -436,11 +471,13 @@ public class AttendanceRepository {
                 jdbc.queryForObject(
                         """
                         SELECT COUNT(*)
-                        FROM attendance_records
-                        WHERE attendance_date = ?
+                        FROM dbo.attendance_records
+                        WHERE company_id = ?
+                          AND attendance_date = ?
                           AND status = 'LATE'
                         """,
                         Integer.class,
+                        companyId,
                         date
                 );
 
@@ -466,9 +503,7 @@ public class AttendanceRepository {
         );
 
         record.setEmployeeNumber(
-                rs.getString(
-                        "employee_number"
-                )
+                rs.getString("employee_number")
         );
 
         String firstName =
@@ -497,9 +532,8 @@ public class AttendanceRepository {
         );
 
         if (
-                rs.getDate(
-                        "attendance_date"
-                ) != null
+                rs.getDate("attendance_date")
+                        != null
         ) {
             record.setAttendanceDate(
                     rs.getDate(
@@ -531,38 +565,26 @@ public class AttendanceRepository {
         );
 
         record.setCheckInMethod(
-                rs.getString(
-                        "check_in_method"
-                )
+                rs.getString("check_in_method")
         );
 
         record.setCheckOutMethod(
-                rs.getString(
-                        "check_out_method"
-                )
+                rs.getString("check_out_method")
         );
 
         long session =
-                rs.getLong(
-                        "qr_session_id"
-                );
+                rs.getLong("qr_session_id");
 
         if (!rs.wasNull()) {
-            record.setQrSessionId(
-                    session
-            );
+            record.setQrSessionId(session);
         }
 
         record.setManualCorrection(
-                rs.getBoolean(
-                        "manual_correction"
-                )
+                rs.getBoolean("manual_correction")
         );
 
         record.setCorrectionReason(
-                rs.getString(
-                        "correction_reason"
-                )
+                rs.getString("correction_reason")
         );
 
         return record;

@@ -20,7 +20,9 @@ public class AttendanceScheduleRepository {
         this.jdbc = jdbc;
     }
 
-    public List<AttendanceSchedule> findAll() {
+    public List<AttendanceSchedule> findAll(
+            Long companyId
+    ) {
 
         return jdbc.query(
                 """
@@ -36,14 +38,19 @@ public class AttendanceScheduleRepository {
                     created_by,
                     created_at,
                     updated_at
-                FROM attendance_schedules
+                FROM dbo.attendance_schedules
+                WHERE company_id = ?
                 ORDER BY start_time, id
                 """,
-                this::map
+                this::map,
+                companyId
         );
     }
 
-    public AttendanceSchedule findById(Long id) {
+    public AttendanceSchedule findById(
+            Long id,
+            Long companyId
+    ) {
 
         List<AttendanceSchedule> result =
                 jdbc.query(
@@ -60,11 +67,45 @@ public class AttendanceScheduleRepository {
                             created_by,
                             created_at,
                             updated_at
-                        FROM attendance_schedules
+                        FROM dbo.attendance_schedules
                         WHERE id = ?
+                          AND company_id = ?
                         """,
                         this::map,
-                        id
+                        id,
+                        companyId
+                );
+
+        return result.isEmpty()
+                ? null
+                : result.get(0);
+    }
+
+    public AttendanceSchedule findLatest(
+            Long companyId
+    ) {
+
+        List<AttendanceSchedule> result =
+                jdbc.query(
+                        """
+                        SELECT TOP 1
+                            id,
+                            schedule_name,
+                            schedule_type,
+                            schedule_date,
+                            day_of_week,
+                            start_time,
+                            end_time,
+                            enabled,
+                            created_by,
+                            created_at,
+                            updated_at
+                        FROM dbo.attendance_schedules
+                        WHERE company_id = ?
+                        ORDER BY id DESC
+                        """,
+                        this::map,
+                        companyId
                 );
 
         return result.isEmpty()
@@ -73,15 +114,17 @@ public class AttendanceScheduleRepository {
     }
 
     public void create(
-            AttendanceSchedule schedule
+            AttendanceSchedule schedule,
+            Long companyId
     ) {
 
         validate(schedule);
 
         jdbc.update(
                 """
-                INSERT INTO attendance_schedules
+                INSERT INTO dbo.attendance_schedules
                 (
+                    company_id,
                     schedule_name,
                     schedule_type,
                     schedule_date,
@@ -91,8 +134,9 @@ public class AttendanceScheduleRepository {
                     enabled,
                     created_by
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
+                companyId,
                 schedule.getScheduleName(),
                 schedule.getScheduleType(),
                 schedule.getScheduleDate() == null
@@ -116,10 +160,16 @@ public class AttendanceScheduleRepository {
 
     public void update(
             Long id,
-            AttendanceSchedule schedule
+            AttendanceSchedule schedule,
+            Long companyId
     ) {
 
-        if (findById(id) == null) {
+        if (
+                findById(
+                        id,
+                        companyId
+                ) == null
+        ) {
             throw new IllegalArgumentException(
                     "Attendance schedule not found"
             );
@@ -129,7 +179,7 @@ public class AttendanceScheduleRepository {
 
         jdbc.update(
                 """
-                UPDATE attendance_schedules
+                UPDATE dbo.attendance_schedules
                 SET
                     schedule_name = ?,
                     schedule_type = ?,
@@ -140,6 +190,7 @@ public class AttendanceScheduleRepository {
                     enabled = ?,
                     updated_at = SYSDATETIME()
                 WHERE id = ?
+                  AND company_id = ?
                 """,
                 schedule.getScheduleName(),
                 schedule.getScheduleType(),
@@ -158,42 +209,51 @@ public class AttendanceScheduleRepository {
                         schedule.getEndTime()
                 ),
                 schedule.isEnabled(),
-                id
+                id,
+                companyId
         );
     }
 
-    public void delete(Long id) {
+    public void delete(
+            Long id,
+            Long companyId
+    ) {
 
-        if (findById(id) == null) {
+        int result =
+                jdbc.update(
+                        """
+                        DELETE FROM dbo.attendance_schedules
+                        WHERE id = ?
+                          AND company_id = ?
+                        """,
+                        id,
+                        companyId
+                );
+
+        if (result == 0) {
             throw new IllegalArgumentException(
                     "Attendance schedule not found"
             );
         }
-
-        jdbc.update(
-                """
-                DELETE FROM attendance_schedules
-                WHERE id = ?
-                """,
-                id
-        );
     }
 
     private void validate(
             AttendanceSchedule schedule
     ) {
 
-        if (schedule.getScheduleName() == null
-                || schedule.getScheduleName().isBlank()) {
-
+        if (
+                schedule.getScheduleName() == null
+                        || schedule.getScheduleName().isBlank()
+        ) {
             throw new IllegalArgumentException(
                     "Schedule name is required"
             );
         }
 
-        if (schedule.getScheduleType() == null
-                || schedule.getScheduleType().isBlank()) {
-
+        if (
+                schedule.getScheduleType() == null
+                        || schedule.getScheduleType().isBlank()
+        ) {
             throw new IllegalArgumentException(
                     "Schedule type is required"
             );
@@ -204,94 +264,92 @@ public class AttendanceScheduleRepository {
                         .trim()
                         .toUpperCase();
 
-        if (!type.equals("ONCE")
-                && !type.equals("DAILY")
-                && !type.equals("WEEKLY")) {
-
+        if (
+                !type.equals("ONCE")
+                        && !type.equals("DAILY")
+                        && !type.equals("WEEKLY")
+        ) {
             throw new IllegalArgumentException(
                     "Schedule type must be ONCE, DAILY or WEEKLY"
             );
         }
 
-        if (schedule.getStartTime() == null
-                || schedule.getEndTime() == null) {
-
+        if (
+                schedule.getStartTime() == null
+                        || schedule.getEndTime() == null
+        ) {
             throw new IllegalArgumentException(
-                    "Start time and end time are required"
+                    "Start and end time are required"
             );
         }
 
-        if (!schedule.getEndTime()
-                .isAfter(schedule.getStartTime())) {
-
+        if (
+                !schedule.getEndTime()
+                        .isAfter(
+                                schedule.getStartTime()
+                        )
+        ) {
             throw new IllegalArgumentException(
                     "End time must be after start time"
             );
         }
 
-        if (type.equals("ONCE")
-                && schedule.getScheduleDate() == null) {
-
+        if (
+                type.equals("ONCE")
+                        && schedule.getScheduleDate() == null
+        ) {
             throw new IllegalArgumentException(
-                    "Schedule date is required for ONCE schedule"
+                    "Schedule date is required"
             );
         }
 
-        if (type.equals("WEEKLY")
-                && normalizeDay(
+        if (
+                type.equals("WEEKLY")
+                        && normalizeDay(
                         schedule.getDayOfWeek()
-                ) == null) {
-
+                ) == null
+        ) {
             throw new IllegalArgumentException(
-                    "Day of week is required for WEEKLY schedule"
+                    "Day of week is required"
             );
         }
     }
 
-    private String normalizeDay(String value) {
+    private String normalizeDay(
+            String value
+    ) {
 
-        if (value == null || value.isBlank()) {
+        if (
+                value == null
+                        || value.isBlank()
+        ) {
             return null;
         }
 
         String day =
-                value.trim().toUpperCase();
+                value.trim()
+                        .toUpperCase();
 
-        switch (day) {
-
-            case "1":
-            case "MONDAY":
-                return "MONDAY";
-
-            case "2":
-            case "TUESDAY":
-                return "TUESDAY";
-
-            case "3":
-            case "WEDNESDAY":
-                return "WEDNESDAY";
-
-            case "4":
-            case "THURSDAY":
-                return "THURSDAY";
-
-            case "5":
-            case "FRIDAY":
-                return "FRIDAY";
-
-            case "6":
-            case "SATURDAY":
-                return "SATURDAY";
-
-            case "7":
-            case "SUNDAY":
-                return "SUNDAY";
-
-            default:
-                throw new IllegalArgumentException(
-                        "Invalid day of week"
-                );
-        }
+        return switch (day) {
+            case "1", "MONDAY" ->
+                    "MONDAY";
+            case "2", "TUESDAY" ->
+                    "TUESDAY";
+            case "3", "WEDNESDAY" ->
+                    "WEDNESDAY";
+            case "4", "THURSDAY" ->
+                    "THURSDAY";
+            case "5", "FRIDAY" ->
+                    "FRIDAY";
+            case "6", "SATURDAY" ->
+                    "SATURDAY";
+            case "7", "SUNDAY" ->
+                    "SUNDAY";
+            default ->
+                    throw new IllegalArgumentException(
+                            "Invalid day of week"
+                    );
+        };
     }
 
     private AttendanceSchedule map(
@@ -314,12 +372,12 @@ public class AttendanceScheduleRepository {
                 rs.getString("schedule_type")
         );
 
-        Date scheduleDate =
+        Date date =
                 rs.getDate("schedule_date");
 
-        if (scheduleDate != null) {
+        if (date != null) {
             schedule.setScheduleDate(
-                    scheduleDate.toLocalDate()
+                    date.toLocalDate()
             );
         }
 

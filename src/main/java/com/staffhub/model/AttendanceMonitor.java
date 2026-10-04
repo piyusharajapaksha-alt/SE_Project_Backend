@@ -6,6 +6,16 @@ public class AttendanceMonitor {
 
     private Long id;
 
+    private Long companyId;
+
+    private String companyName;
+
+    private boolean authorized;
+
+    private String authorizedBy;
+
+    private LocalDateTime authorizedAt;
+
     private String activationCode;
 
     private boolean active;
@@ -26,12 +36,55 @@ public class AttendanceMonitor {
 
     private LocalDateTime qrExpiresAt;
 
+    public AttendanceMonitor() {
+    }
+
     public Long getId() {
         return id;
     }
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public Long getCompanyId() {
+        return companyId;
+    }
+
+    public void setCompanyId(Long companyId) {
+        this.companyId = companyId;
+    }
+
+    public String getCompanyName() {
+        return companyName;
+    }
+
+    public void setCompanyName(String companyName) {
+        this.companyName = companyName;
+    }
+
+    public boolean isAuthorized() {
+        return authorized;
+    }
+
+    public void setAuthorized(boolean authorized) {
+        this.authorized = authorized;
+    }
+
+    public String getAuthorizedBy() {
+        return authorizedBy;
+    }
+
+    public void setAuthorizedBy(String authorizedBy) {
+        this.authorizedBy = authorizedBy;
+    }
+
+    public LocalDateTime getAuthorizedAt() {
+        return authorizedAt;
+    }
+
+    public void setAuthorizedAt(LocalDateTime authorizedAt) {
+        this.authorizedAt = authorizedAt;
     }
 
     public String getActivationCode() {

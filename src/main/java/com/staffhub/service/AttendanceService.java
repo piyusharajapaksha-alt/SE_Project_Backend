@@ -5,6 +5,7 @@ import com.staffhub.model.AttendanceRecord;
 import com.staffhub.repository.AttendanceMonitorRepository;
 import com.staffhub.repository.AttendanceRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.LocalDate;
@@ -20,57 +21,94 @@ public class AttendanceService {
 
     private final AttendanceRepository attendanceRepository;
     private final AttendanceMonitorRepository monitorRepository;
+    private final CompanyContextService companyContextService;
 
     private final SecureRandom random =
             new SecureRandom();
 
     public AttendanceService(
             AttendanceRepository attendanceRepository,
-            AttendanceMonitorRepository monitorRepository
+            AttendanceMonitorRepository monitorRepository,
+            CompanyContextService companyContextService
     ) {
         this.attendanceRepository =
                 attendanceRepository;
 
         this.monitorRepository =
                 monitorRepository;
+
+        this.companyContextService =
+                companyContextService;
     }
 
-    public synchronized AttendanceMonitor getMonitor() {
+    /*
+     * ============================================================
+     * PUBLIC QR MONITOR
+     * ============================================================
+     *
+     * monitorId belongs to the browser/device.
+     *
+     * It is NOT the company ID.
+     */
 
-        AttendanceMonitor monitor =
-                monitorRepository.getMonitor();
+    @Transactional
+    public synchronized AttendanceMonitor getPublicMonitor(
+            Long monitorId
+    ) {
 
-        if (monitor == null) {
+        if (monitorId != null) {
 
-            monitorRepository.create(
-                    generateActivationCode()
-            );
-
-            monitor =
-                    monitorRepository.getMonitor();
-        }
-
-        if (
-                monitor != null
-                        && monitor.isActive()
-                        && qrExpired(monitor)
-        ) {
-
-            monitor =
-                    rotateQrInternal(
-                            monitor,
-                            "SYSTEM",
-                            true
+            AttendanceMonitor existing =
+                    monitorRepository.findById(
+                            monitorId
                     );
+
+            if (existing != null) {
+
+                if (
+                        existing.isActive()
+                                && qrExpired(existing)
+                ) {
+
+                    if (
+                            existing.isAuthorized()
+                                    && existing.getCompanyId()
+                                    != null
+                    ) {
+                        return rotateQrInternal(
+                                existing,
+                                "SYSTEM",
+                                true
+                        );
+                    }
+                }
+
+                return existing;
+            }
         }
 
-        return monitor;
+        String activationCode =
+                generateActivationCode();
+
+        Long id =
+                monitorRepository.create(
+                        activationCode
+                );
+
+        return monitorRepository.findById(id);
     }
 
-    public synchronized AttendanceMonitor activate(
-            String code,
-            String user,
-            String type
+    /*
+     * ============================================================
+     * ACCEPT NEW MONITOR
+     * ============================================================
+     *
+     * OTP is used ONLY here.
+     */
+
+    @Transactional
+    public synchronized AttendanceMonitor authorizeMonitor(
+            String code
     ) {
 
         if (
@@ -82,89 +120,151 @@ public class AttendanceService {
             );
         }
 
+        Long companyId =
+                companyContextService
+                        .getCurrentCompanyId();
+
+        String user =
+                currentUsername();
+
         AttendanceMonitor monitor =
-                getMonitor();
+                monitorRepository
+                        .findUnassignedByCode(
+                                code.trim()
+                        );
 
         if (monitor == null) {
-            throw new IllegalStateException(
-                    "Attendance monitor could not be loaded"
+            throw new IllegalArgumentException(
+                    "Invalid or already accepted monitor code"
+            );
+        }
+
+        monitorRepository.authorize(
+                monitor.getId(),
+                companyId,
+                user
+        );
+
+        monitor =
+                monitorRepository.findByCompany(
+                        monitor.getId(),
+                        companyId
+                );
+
+        monitorRepository.logEvent(
+                monitor.getId(),
+                companyId,
+                null,
+                null,
+                "MONITOR_AUTHORIZED",
+                null,
+                user,
+                "QR monitor accepted by company"
+        );
+
+        return monitor;
+    }
+
+    /*
+     * ============================================================
+     * ACCEPTED MONITORS
+     * ============================================================
+     */
+
+    public List<AttendanceMonitor>
+    getAcceptedMonitors() {
+
+        Long companyId =
+                companyContextService
+                        .getCurrentCompanyId();
+
+        return monitorRepository
+                .findAcceptedByCompany(
+                        companyId
+                );
+    }
+
+    /*
+     * ============================================================
+     * REJECT MONITOR
+     * ============================================================
+     */
+
+    @Transactional
+    public synchronized void rejectMonitor(
+            Long monitorId
+    ) {
+
+        Long companyId =
+                companyContextService
+                        .getCurrentCompanyId();
+
+        AttendanceMonitor monitor =
+                monitorRepository.findByCompany(
+                        monitorId,
+                        companyId
+                );
+
+        if (monitor == null) {
+            throw new IllegalArgumentException(
+                    "Monitor does not belong to your company"
             );
         }
 
         if (monitor.isActive()) {
-            throw new IllegalStateException(
-                    "Attendance monitor is already active"
+            deactivate(
+                    monitorId,
+                    "MANUAL"
             );
         }
 
-        if (
-                monitor.getActivationCode() == null
-                        || !code.trim().equals(
-                        monitor.getActivationCode()
-                )
-        ) {
-            throw new IllegalArgumentException(
-                    "Invalid attendance activation code"
-            );
-        }
+        monitorRepository.logEvent(
+                monitorId,
+                companyId,
+                null,
+                null,
+                "MONITOR_REJECTED",
+                monitor.getQrSequence(),
+                currentUsername(),
+                "Monitor rejected and returned to unassigned state"
+        );
 
-        return activateInternal(
-                monitor,
-                user,
-                type
+        monitorRepository.reject(
+                monitorId,
+                companyId
         );
     }
 
-    public synchronized AttendanceMonitor activateScheduled(
-            String scheduleName
+    /*
+     * ============================================================
+     * ACTIVATE ACCEPTED MONITOR
+     * ============================================================
+     */
+
+    @Transactional
+    public synchronized AttendanceMonitor activate(
+            Long monitorId
     ) {
 
+        Long companyId =
+                companyContextService
+                        .getCurrentCompanyId();
+
         AttendanceMonitor monitor =
-                getMonitor();
+                monitorRepository.findByCompany(
+                        monitorId,
+                        companyId
+                );
 
         if (monitor == null) {
-            throw new IllegalStateException(
-                    "Attendance monitor could not be loaded"
+            throw new IllegalArgumentException(
+                    "Monitor does not belong to your company"
             );
         }
 
         if (monitor.isActive()) {
             return monitor;
         }
-
-        String user =
-                scheduleName == null
-                        || scheduleName.isBlank()
-                        ? "SCHEDULE"
-                        : "SCHEDULE:"
-                        + scheduleName;
-
-        return activateInternal(
-                monitor,
-                user,
-                "SCHEDULE"
-        );
-    }
-
-    private AttendanceMonitor activateInternal(
-            AttendanceMonitor monitor,
-            String user,
-            String type
-    ) {
-
-        String activationType =
-                type == null
-                        || type.isBlank()
-                        ? "MANUAL"
-                        : type
-                        .trim()
-                        .toUpperCase();
-
-        String activatedBy =
-                user == null
-                        || user.isBlank()
-                        ? "SYSTEM"
-                        : user.trim();
 
         LocalDateTime now =
                 LocalDateTime.now();
@@ -173,111 +273,149 @@ public class AttendanceService {
                 generateQrToken();
 
         monitorRepository.activate(
-                monitor.getId(),
-                activatedBy,
-                activationType,
+                monitorId,
+                companyId,
+                currentUsername(),
+                "MANUAL",
                 token,
                 1,
                 now,
-                now.plusSeconds(
-                        QR_SECONDS
-                )
+                now.plusSeconds(QR_SECONDS)
         );
 
         Long sessionId =
                 monitorRepository.createSession(
-                        monitor.getId(),
-                        activationType,
-                        activatedBy
+                        monitorId,
+                        companyId,
+                        "MANUAL",
+                        currentUsername()
                 );
 
         monitorRepository.logEvent(
-                monitor.getId(),
+                monitorId,
+                companyId,
                 null,
                 null,
                 "MONITOR_ACTIVATED",
                 1,
-                activatedBy,
-                "Attendance monitor activated as "
-                        + activationType
-                        + ". Session ID: "
+                currentUsername(),
+                "Attendance monitor activated. Session "
                         + sessionId
         );
 
-        return monitorRepository.getMonitor();
+        return monitorRepository.findByCompany(
+                monitorId,
+                companyId
+        );
     }
 
+    /*
+     * ============================================================
+     * DEACTIVATE
+     * ============================================================
+     */
+
+    @Transactional
     public synchronized void deactivate(
-            String user,
+            Long monitorId,
             String type
     ) {
 
+        Long companyId =
+                companyContextService
+                        .getCurrentCompanyId();
+
         AttendanceMonitor monitor =
-                monitorRepository.getActiveMonitor();
+                monitorRepository.findByCompany(
+                        monitorId,
+                        companyId
+                );
 
         if (monitor == null) {
+            throw new IllegalArgumentException(
+                    "Monitor does not belong to your company"
+            );
+        }
+
+        if (!monitor.isActive()) {
             return;
         }
 
         String performedBy =
-                user == null
-                        || user.isBlank()
-                        ? "SYSTEM"
-                        : user.trim();
-
-        String deactivationType =
-                type == null
-                        || type.isBlank()
-                        ? "MANUAL"
-                        : type
-                        .trim()
-                        .toUpperCase();
+                currentUsername();
 
         Long sessionId =
                 monitorRepository.getOpenSessionId(
-                        monitor.getId()
+                        monitorId,
+                        companyId
                 );
 
         if (sessionId != null) {
 
             monitorRepository.closeSession(
                     sessionId,
+                    companyId,
                     performedBy,
-                    deactivationType
+                    type == null
+                            ? "MANUAL"
+                            : type
             );
         }
 
         monitorRepository.logEvent(
-                monitor.getId(),
+                monitorId,
+                companyId,
                 null,
                 null,
                 "MONITOR_DEACTIVATED",
                 monitor.getQrSequence(),
                 performedBy,
-                "Attendance monitor deactivated as "
-                        + deactivationType
+                "Attendance monitor deactivated"
         );
 
         monitorRepository.deactivate(
-                monitor.getId(),
+                monitorId,
+                companyId,
                 generateActivationCode()
         );
     }
 
-    public synchronized AttendanceMonitor rotateQr() {
+    /*
+     * ============================================================
+     * ROTATE QR
+     * ============================================================
+     */
+
+    @Transactional
+    public synchronized AttendanceMonitor rotateQr(
+            Long monitorId
+    ) {
+
+        Long companyId =
+                companyContextService
+                        .getCurrentCompanyId();
 
         AttendanceMonitor monitor =
-                monitorRepository.getActiveMonitor();
+                monitorRepository.findByCompany(
+                        monitorId,
+                        companyId
+                );
 
         if (monitor == null) {
+            throw new IllegalArgumentException(
+                    "Monitor does not belong to your company"
+            );
+        }
+
+        if (!monitor.isActive()) {
             throw new IllegalStateException(
-                    "Attendance monitor is not active"
+                    "Monitor is not active"
             );
         }
 
         return rotateQrInternal(
                 monitor,
-                "SYSTEM",
+                currentUsername(),
                 false
         );
     }
@@ -287,6 +425,15 @@ public class AttendanceService {
             String performedBy,
             boolean automatic
     ) {
+
+        Long companyId =
+                monitor.getCompanyId();
+
+        if (companyId == null) {
+            throw new IllegalStateException(
+                    "Monitor is not assigned to a company"
+            );
+        }
 
         LocalDateTime now =
                 LocalDateTime.now();
@@ -298,31 +445,49 @@ public class AttendanceService {
 
         monitorRepository.rotate(
                 monitor.getId(),
+                companyId,
                 generateQrToken(),
                 sequence,
                 now,
-                now.plusSeconds(
-                        QR_SECONDS
-                )
+                now.plusSeconds(QR_SECONDS)
         );
 
         monitorRepository.logEvent(
                 monitor.getId(),
+                companyId,
                 null,
                 null,
                 "QR_ROTATED",
                 sequence,
                 performedBy,
                 automatic
-                        ? "QR automatically rotated after expiration"
+                        ? "QR automatically rotated"
                         : "QR manually rotated"
         );
 
-        return monitorRepository.getMonitor();
+        return monitorRepository.findByCompany(
+                monitor.getId(),
+                companyId
+        );
     }
 
+    /*
+     * ============================================================
+     * QR SCAN
+     * ============================================================
+     *
+     * QR contains:
+     *
+     * {
+     *   "monitorId": 12,
+     *   "token": "..."
+     * }
+     */
+
+    @Transactional
     public synchronized AttendanceRecord scan(
             String employeeIdentifier,
+            Long monitorId,
             String token
     ) {
 
@@ -335,6 +500,12 @@ public class AttendanceService {
             );
         }
 
+        if (monitorId == null) {
+            throw new IllegalArgumentException(
+                    "Monitor ID is required"
+            );
+        }
+
         if (
                 token == null
                         || token.isBlank()
@@ -344,43 +515,70 @@ public class AttendanceService {
             );
         }
 
-        String identifier =
-                employeeIdentifier.trim();
+        AttendanceMonitor monitor =
+                monitorRepository.findById(
+                        monitorId
+                );
 
+        if (monitor == null) {
+            throw new IllegalArgumentException(
+                    "Attendance monitor does not exist"
+            );
+        }
+
+        if (!monitor.isAuthorized()) {
+            throw new IllegalStateException(
+                    "This attendance monitor has not been authorized"
+            );
+        }
+
+        if (monitor.getCompanyId() == null) {
+            throw new IllegalStateException(
+                    "Attendance monitor is not assigned to a company"
+            );
+        }
+
+        Long companyId =
+                monitor.getCompanyId();
+
+        /*
+         * Employee must belong to SAME company.
+         */
         Long employeeId =
                 attendanceRepository
                         .resolveEmployeeId(
-                                identifier
+                                employeeIdentifier,
+                                companyId
                         );
 
         if (employeeId == null) {
             throw new IllegalArgumentException(
-                    "Employee does not exist or is inactive"
+                    "Employee does not belong to this company"
             );
         }
 
-        LocalDate today =
-                LocalDate.now();
-
-        if (
-                attendanceRepository
-                        .employeeOnApprovedLeave(
-                                identifier,
-                                today
-                        )
-        ) {
-            throw new IllegalStateException(
-                    "Employee is on approved leave today"
-            );
-        }
-
-        AttendanceMonitor monitor =
-                monitorRepository
-                        .getActiveMonitor();
-
-        if (monitor == null) {
+        /*
+         * Monitor must be active.
+         */
+        if (!monitor.isActive()) {
             throw new IllegalStateException(
                     "Attendance monitor is not active"
+            );
+        }
+
+        /*
+         * Token verification.
+         */
+        if (
+                monitor.getCurrentQrToken() == null
+                        || !monitor
+                        .getCurrentQrToken()
+                        .equals(
+                                token.trim()
+                        )
+        ) {
+            throw new IllegalArgumentException(
+                    "QR code is invalid"
             );
         }
 
@@ -388,45 +586,53 @@ public class AttendanceService {
                 LocalDateTime.now();
 
         if (
-                monitor.getCurrentQrToken() == null
-                        || !monitor
-                        .getCurrentQrToken()
-                        .equals(token.trim())
-        ) {
-            throw new IllegalArgumentException(
-                    "QR code is invalid or expired"
-            );
-        }
-
-        if (
                 monitor.getQrExpiresAt() == null
-                        || !monitor
-                        .getQrExpiresAt()
+                        || !monitor.getQrExpiresAt()
                         .isAfter(now)
         ) {
             throw new IllegalArgumentException(
-                    "QR code has expired. Please scan the new QR code."
+                    "QR code has expired"
             );
         }
 
-        AttendanceRecord existing =
+        /*
+         * Leave check is also company scoped.
+         */
+        if (
                 attendanceRepository
-                        .findByEmployeeAndDate(
-                                employeeId,
-                                today
-                        );
+                        .employeeOnApprovedLeave(
+                                employeeIdentifier,
+                                companyId,
+                                LocalDate.now()
+                        )
+        ) {
+            throw new IllegalStateException(
+                    "Employee is on approved leave today"
+            );
+        }
 
         Long sessionId =
-                monitorRepository
-                        .getOpenSessionId(
-                                monitor.getId()
-                        );
+                monitorRepository.getOpenSessionId(
+                        monitorId,
+                        companyId
+                );
 
         if (sessionId == null) {
             throw new IllegalStateException(
                     "Attendance monitor session is not available"
             );
         }
+
+        LocalDate today =
+                LocalDate.now();
+
+        AttendanceRecord existing =
+                attendanceRepository
+                        .findByEmployeeAndDate(
+                                employeeId,
+                                companyId,
+                                today
+                        );
 
         /*
          * CHECK IN
@@ -436,6 +642,7 @@ public class AttendanceService {
             Long id =
                     attendanceRepository.create(
                             employeeId,
+                            companyId,
                             today,
                             now,
                             "QR",
@@ -447,22 +654,24 @@ public class AttendanceService {
                     attendanceRepository
                             .findByEmployeeAndDate(
                                     employeeId,
+                                    companyId,
                                     today
                             );
 
             monitorRepository.logEvent(
-                    monitor.getId(),
+                    monitorId,
+                    companyId,
                     id,
                     employeeId,
                     "CHECK_IN",
                     monitor.getQrSequence(),
-                    identifier,
-                    "Employee checked in using QR"
+                    employeeIdentifier,
+                    "Employee checked in using company QR monitor"
             );
 
             rotateQrInternal(
                     monitor,
-                    identifier,
+                    employeeIdentifier,
                     false
             );
 
@@ -483,6 +692,7 @@ public class AttendanceService {
          */
         attendanceRepository.updateCheckOut(
                 existing.getId(),
+                companyId,
                 now,
                 "QR"
         );
@@ -491,36 +701,49 @@ public class AttendanceService {
                 attendanceRepository
                         .findByEmployeeAndDate(
                                 employeeId,
+                                companyId,
                                 today
                         );
 
         monitorRepository.logEvent(
-                monitor.getId(),
+                monitorId,
+                companyId,
                 existing.getId(),
                 employeeId,
                 "CHECK_OUT",
                 monitor.getQrSequence(),
-                identifier,
-                "Employee checked out using QR"
+                employeeIdentifier,
+                "Employee checked out using company QR monitor"
         );
 
         rotateQrInternal(
                 monitor,
-                identifier,
+                employeeIdentifier,
                 false
         );
 
         return updated;
     }
 
+    /*
+     * ============================================================
+     * EMPLOYEE TODAY
+     * ============================================================
+     */
+
     public AttendanceRecord today(
             String employeeIdentifier
     ) {
 
+        Long companyId =
+                companyContextService
+                        .getCurrentCompanyId();
+
         Long employeeId =
                 attendanceRepository
                         .resolveEmployeeId(
-                                employeeIdentifier
+                                employeeIdentifier,
+                                companyId
                         );
 
         if (employeeId == null) {
@@ -529,18 +752,30 @@ public class AttendanceService {
 
         return attendanceRepository
                 .findTodayByEmployee(
-                        employeeId
+                        employeeId,
+                        companyId
                 );
     }
+
+    /*
+     * ============================================================
+     * EMPLOYEE HISTORY
+     * ============================================================
+     */
 
     public List<AttendanceRecord> history(
             String employeeIdentifier
     ) {
 
+        Long companyId =
+                companyContextService
+                        .getCurrentCompanyId();
+
         Long employeeId =
                 attendanceRepository
                         .resolveEmployeeId(
-                                employeeIdentifier
+                                employeeIdentifier,
+                                companyId
                         );
 
         if (employeeId == null) {
@@ -549,21 +784,39 @@ public class AttendanceService {
 
         return attendanceRepository
                 .findByEmployee(
-                        employeeId
+                        employeeId,
+                        companyId
                 );
     }
+
+    /*
+     * ============================================================
+     * MANAGEMENT RECORDS
+     * ============================================================
+     */
 
     public List<AttendanceRecord> records(
             LocalDate date
     ) {
 
+        Long companyId =
+                companyContextService
+                        .getCurrentCompanyId();
+
         return attendanceRepository
                 .findByDate(
+                        companyId,
                         date == null
                                 ? LocalDate.now()
                                 : date
                 );
     }
+
+    /*
+     * ============================================================
+     * CORRECTION
+     * ============================================================
+     */
 
     public void correct(
             Long id,
@@ -579,8 +832,13 @@ public class AttendanceService {
             );
         }
 
+        Long companyId =
+                companyContextService
+                        .getCurrentCompanyId();
+
         attendanceRepository.updateCorrection(
                 id,
+                companyId,
                 parseDateTime(checkIn),
                 parseDateTime(checkOut),
                 status,
@@ -588,9 +846,19 @@ public class AttendanceService {
         );
     }
 
+    /*
+     * ============================================================
+     * SUMMARY
+     * ============================================================
+     */
+
     public Map<String, Object> summary(
             LocalDate date
     ) {
+
+        Long companyId =
+                companyContextService
+                        .getCurrentCompanyId();
 
         LocalDate selectedDate =
                 date == null
@@ -599,11 +867,14 @@ public class AttendanceService {
 
         int activeEmployees =
                 attendanceRepository
-                        .countActiveEmployees();
+                        .countActiveEmployees(
+                                companyId
+                        );
 
         int onLeave =
                 attendanceRepository
                         .countEmployeesOnApprovedLeave(
+                                companyId,
                                 selectedDate
                         );
 
@@ -616,24 +887,28 @@ public class AttendanceService {
         int attended =
                 attendanceRepository
                         .countAttended(
+                                companyId,
                                 selectedDate
                         );
 
         int checkedOut =
                 attendanceRepository
                         .countCheckedOut(
+                                companyId,
                                 selectedDate
                         );
 
         int working =
                 attendanceRepository
                         .countCurrentlyWorking(
+                                companyId,
                                 selectedDate
                         );
 
         int late =
                 attendanceRepository
                         .countLate(
+                                companyId,
                                 selectedDate
                         );
 
@@ -646,25 +921,18 @@ public class AttendanceService {
         return Map.of(
                 "date",
                 selectedDate,
-
                 "expected",
                 expected,
-
                 "attended",
                 attended,
-
                 "notAttended",
                 notAttended,
-
                 "onLeave",
                 onLeave,
-
                 "late",
                 late,
-
                 "checkedOut",
                 checkedOut,
-
                 "currentlyWorking",
                 working
         );
@@ -675,11 +943,31 @@ public class AttendanceService {
     ) {
 
         return monitor.getQrExpiresAt() == null
-                || !monitor
-                .getQrExpiresAt()
+                || !monitor.getQrExpiresAt()
                 .isAfter(
                         LocalDateTime.now()
                 );
+    }
+
+    private String currentUsername() {
+
+        org.springframework.security.core.Authentication
+                authentication =
+                org.springframework.security.core.context
+                        .SecurityContextHolder
+                        .getContext()
+                        .getAuthentication();
+
+        if (
+                authentication == null
+                        || authentication.getName() == null
+        ) {
+            return "SYSTEM";
+        }
+
+        return authentication
+                .getName()
+                .trim();
     }
 
     private LocalDateTime parseDateTime(
@@ -693,18 +981,14 @@ public class AttendanceService {
             return null;
         }
 
-        return LocalDateTime.parse(
-                value
-        );
+        return LocalDateTime.parse(value);
     }
 
     private String generateActivationCode() {
 
         return String.format(
                 "%06d",
-                random.nextInt(
-                        1_000_000
-                )
+                random.nextInt(1_000_000)
         );
     }
 
@@ -712,9 +996,6 @@ public class AttendanceService {
 
         return UUID.randomUUID()
                 .toString()
-                .replace(
-                        "-",
-                        ""
-                );
+                .replace("-", "");
     }
 }
