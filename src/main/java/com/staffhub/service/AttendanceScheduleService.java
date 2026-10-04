@@ -10,6 +10,7 @@ import java.util.List;
 public class AttendanceScheduleService {
 
     private final AttendanceScheduleRepository repository;
+
     private final CompanyContextService companyContextService;
 
     public AttendanceScheduleService(
@@ -21,6 +22,12 @@ public class AttendanceScheduleService {
                 companyContextService;
     }
 
+    /*
+     * ============================================================
+     * FIND ALL
+     * ============================================================
+     */
+
     public List<AttendanceSchedule> findAll() {
 
         Long companyId =
@@ -31,6 +38,12 @@ public class AttendanceScheduleService {
                 companyId
         );
     }
+
+    /*
+     * ============================================================
+     * CREATE
+     * ============================================================
+     */
 
     public AttendanceSchedule create(
             AttendanceSchedule schedule
@@ -49,6 +62,12 @@ public class AttendanceScheduleService {
                 companyId
         );
     }
+
+    /*
+     * ============================================================
+     * UPDATE
+     * ============================================================
+     */
 
     public AttendanceSchedule update(
             Long id,
@@ -71,7 +90,15 @@ public class AttendanceScheduleService {
         );
     }
 
-    public void delete(Long id) {
+    /*
+     * ============================================================
+     * DELETE
+     * ============================================================
+     */
+
+    public void delete(
+            Long id
+    ) {
 
         Long companyId =
                 companyContextService

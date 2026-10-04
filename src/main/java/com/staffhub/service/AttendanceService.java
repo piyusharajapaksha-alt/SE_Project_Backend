@@ -381,6 +381,252 @@ public class AttendanceService {
     }
 
     /*
+ * ============================================================
+ * SCHEDULED ATTENDANCE OPERATIONS
+ * ============================================================
+ *
+ * These methods are specifically for AttendanceScheduler.
+ *
+ * The scheduler does NOT have an authenticated HTTP user,
+ * therefore companyId is supplied from the schedule database row.
+ */
+
+/*
+ * ============================================================
+ * ACTIVATE SCHEDULED MONITOR
+ * ============================================================
+ */
+
+@Transactional
+public synchronized AttendanceMonitor
+activateScheduledForCompany(
+        Long companyId,
+        String scheduleName
+) {
+
+    if (companyId == null) {
+        throw new IllegalArgumentException(
+                "Company ID is required"
+        );
+    }
+
+    /*
+     * Check whether this company already has
+     * an active monitor.
+     */
+    AttendanceMonitor activeMonitor =
+            monitorRepository.findActiveByCompany(
+                    companyId
+            );
+
+    if (activeMonitor != null) {
+        return activeMonitor;
+    }
+
+    /*
+     * Find authorized monitors belonging to
+     * this company.
+     */
+    List<AttendanceMonitor> monitors =
+            monitorRepository.findAcceptedByCompany(
+                    companyId
+            );
+
+    /*
+     * No authorized monitor.
+     *
+     * Do NOT activate a random/unassigned monitor.
+     */
+    if (
+            monitors == null
+                    || monitors.isEmpty()
+    ) {
+
+        throw new IllegalStateException(
+                "No authorized attendance monitor exists for company "
+                        + companyId
+        );
+    }
+
+    /*
+     * Use the newest accepted monitor.
+     */
+    AttendanceMonitor monitor =
+            monitors.get(
+                    monitors.size() - 1
+            );
+
+    LocalDateTime now =
+            LocalDateTime.now();
+
+    String token =
+            generateQrToken();
+
+    monitorRepository.activate(
+            monitor.getId(),
+            companyId,
+            "SCHEDULE",
+            "SCHEDULE",
+            token,
+            1,
+            now,
+            now.plusSeconds(QR_SECONDS)
+    );
+
+    Long sessionId =
+            monitorRepository.createSession(
+                    monitor.getId(),
+                    companyId,
+                    "SCHEDULE",
+                    "SCHEDULE"
+            );
+
+    monitorRepository.logEvent(
+            monitor.getId(),
+            companyId,
+            null,
+            null,
+            "MONITOR_ACTIVATED",
+            1,
+            "SCHEDULE",
+            "Attendance monitor automatically activated for schedule: "
+                    + scheduleName
+                    + ". Session ID: "
+                    + sessionId
+    );
+
+    return monitorRepository.findByCompany(
+            monitor.getId(),
+            companyId
+    );
+}
+
+
+/*
+ * ============================================================
+ * DEACTIVATE SCHEDULED MONITOR
+ * ============================================================
+ */
+
+@Transactional
+public synchronized void
+deactivateScheduledForCompany(
+        Long companyId,
+        Long monitorId
+) {
+
+    if (companyId == null) {
+        throw new IllegalArgumentException(
+                "Company ID is required"
+        );
+    }
+
+    if (monitorId == null) {
+        return;
+    }
+
+    AttendanceMonitor monitor =
+            monitorRepository.findByCompany(
+                    monitorId,
+                    companyId
+            );
+
+    /*
+     * Monitor may already have been manually
+     * deactivated.
+     */
+    if (
+            monitor == null
+                    || !monitor.isActive()
+    ) {
+        return;
+    }
+
+    Long sessionId =
+            monitorRepository.getOpenSessionId(
+                    monitorId,
+                    companyId
+            );
+
+    if (sessionId != null) {
+
+        monitorRepository.closeSession(
+                sessionId,
+                companyId,
+                "SCHEDULE",
+                "SCHEDULE"
+        );
+    }
+
+    monitorRepository.logEvent(
+            monitorId,
+            companyId,
+            null,
+            null,
+            "MONITOR_DEACTIVATED",
+            monitor.getQrSequence(),
+            "SCHEDULE",
+            "Attendance monitor automatically deactivated because the attendance schedule ended"
+    );
+
+    /*
+     * This also clears the QR and generates a
+     * new activation code.
+     */
+    monitorRepository.deactivate(
+            monitorId,
+            companyId,
+            generateActivationCode()
+    );
+}
+
+
+/*
+ * ============================================================
+ * REFRESH SCHEDULED QR
+ * ============================================================
+ */
+
+@Transactional
+public synchronized void
+refreshScheduledQrIfExpired(
+        Long companyId,
+        Long monitorId
+) {
+
+    if (companyId == null || monitorId == null) {
+        return;
+    }
+
+    AttendanceMonitor monitor =
+            monitorRepository.findByCompany(
+                    monitorId,
+                    companyId
+            );
+
+    if (
+            monitor == null
+                    || !monitor.isActive()
+    ) {
+        return;
+    }
+
+    /*
+     * QR expires every 10 seconds.
+     *
+     * Only rotate when actually expired.
+     */
+    if (qrExpired(monitor)) {
+
+        rotateQrInternal(
+                monitor,
+                "SCHEDULE",
+                true
+        );
+    }
+}
+
+    /*
      * ============================================================
      * ROTATE QR
      * ============================================================

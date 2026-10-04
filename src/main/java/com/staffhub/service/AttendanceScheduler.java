@@ -1,7 +1,7 @@
 package com.staffhub.service;
 
-import com.staffhub.model.AttendanceSchedule;
 import com.staffhub.model.AttendanceMonitor;
+import com.staffhub.model.AttendanceSchedule;
 import com.staffhub.repository.AttendanceMonitorRepository;
 import com.staffhub.repository.AttendanceScheduleRepository;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Objects;
 
 @Component
 public class AttendanceScheduler {
@@ -36,11 +37,26 @@ public class AttendanceScheduler {
                 attendanceService;
     }
 
-    /**
-     * Checks schedules every 10 seconds.
+    /*
+     * ============================================================
+     * SCHEDULE PROCESSOR
+     * ============================================================
      *
-     * This is intentionally the same interval as the QR lifetime.
+     * Runs every 10 seconds.
+     *
+     * IMPORTANT:
+     *
+     * This is a background task.
+     *
+     * There is NO logged-in HTTP user here.
+     *
+     * Therefore we MUST NOT use:
+     *
+     * CompanyContextService.getCurrentCompanyId()
+     *
+     * Instead, every schedule contains its own companyId.
      */
+
     @Scheduled(fixedRate = 10_000)
     public void processSchedules() {
 
@@ -56,61 +72,35 @@ public class AttendanceScheduler {
                     now.toLocalTime();
 
             List<AttendanceSchedule> schedules =
-                    scheduleRepository.findAll();
+                    scheduleRepository
+                            .findAllForScheduler();
 
-            AttendanceSchedule activeSchedule =
-                    findMatchingSchedule(
-                            schedules,
-                            date,
-                            time
+            /*
+             * Process every company independently.
+             */
+            schedules.stream()
+                    .map(
+                            AttendanceSchedule::getCompanyId
+                    )
+                    .filter(
+                            Objects::nonNull
+                    )
+                    .distinct()
+                    .forEach(
+                            companyId ->
+                                    processCompany(
+                                            companyId,
+                                            schedules,
+                                            date,
+                                            time
+                                    )
                     );
-
-            AttendanceMonitor monitor =
-                    monitorRepository.getActiveMonitor();
-
-            /*
-             * There is a schedule active now,
-             * but monitor is OFF.
-             */
-            if (activeSchedule != null
-                    && monitor == null) {
-
-                attendanceService.activateScheduled(
-                        activeSchedule.getScheduleName()
-                );
-
-                return;
-            }
-
-            /*
-             * No schedule is active,
-             * but monitor is currently ON.
-             */
-            if (activeSchedule == null
-                    && monitor != null) {
-
-                attendanceService.deactivate(
-                        "SCHEDULE",
-                        "SCHEDULE"
-                );
-
-                return;
-            }
-
-            /*
-             * Monitor is active and schedule is still valid.
-             *
-             * getMonitor() automatically refreshes an expired QR.
-             */
-            if (monitor != null) {
-                attendanceService.getMonitor();
-            }
 
         } catch (Exception exception) {
 
             /*
-             * Scheduler must not stop permanently because
-             * one bad schedule/database row caused an error.
+             * Scheduler must continue running even if
+             * one database/company error occurs.
              */
             System.err.println(
                     "Attendance scheduler error: "
@@ -119,39 +109,184 @@ public class AttendanceScheduler {
         }
     }
 
-    private AttendanceSchedule findMatchingSchedule(
+    /*
+     * ============================================================
+     * PROCESS ONE COMPANY
+     * ============================================================
+     */
+
+    private void processCompany(
+            Long companyId,
             List<AttendanceSchedule> schedules,
             LocalDate date,
             LocalTime time
     ) {
 
-        for (AttendanceSchedule schedule : schedules) {
+        try {
+
+            AttendanceSchedule activeSchedule =
+                    findMatchingSchedule(
+                            schedules,
+                            companyId,
+                            date,
+                            time
+                    );
+
+            /*
+             * Find ONLY this company's active monitor.
+             */
+            AttendanceMonitor monitor =
+                    monitorRepository
+                            .findActiveByCompany(
+                                    companyId
+                            );
+
+            /*
+             * ----------------------------------------------------
+             * SCHEDULE ACTIVE + MONITOR OFF
+             * ----------------------------------------------------
+             */
+
+            if (
+                    activeSchedule != null
+                            && monitor == null
+            ) {
+
+                attendanceService
+                        .activateScheduledForCompany(
+                                companyId,
+                                activeSchedule
+                                        .getScheduleName()
+                        );
+
+                return;
+            }
+
+            /*
+             * ----------------------------------------------------
+             * SCHEDULE FINISHED + MONITOR ON
+             * ----------------------------------------------------
+             */
+
+            if (
+                    activeSchedule == null
+                            && monitor != null
+            ) {
+
+                attendanceService
+                        .deactivateScheduledForCompany(
+                                companyId,
+                                monitor.getId()
+                        );
+
+                return;
+            }
+
+            /*
+             * ----------------------------------------------------
+             * SCHEDULE ACTIVE + MONITOR ACTIVE
+             * ----------------------------------------------------
+             *
+             * Make sure QR is still valid.
+             */
+
+            if (
+                    activeSchedule != null
+                            && monitor != null
+            ) {
+
+                attendanceService
+                        .refreshScheduledQrIfExpired(
+                                companyId,
+                                monitor.getId()
+                        );
+            }
+
+        } catch (Exception exception) {
+
+            /*
+             * An error in one company must not stop
+             * scheduling for the other companies.
+             */
+            System.err.println(
+                    "Attendance scheduler error for company "
+                            + companyId
+                            + ": "
+                            + exception.getMessage()
+            );
+        }
+    }
+
+    /*
+     * ============================================================
+     * FIND CURRENT SCHEDULE
+     * ============================================================
+     */
+
+    private AttendanceSchedule findMatchingSchedule(
+            List<AttendanceSchedule> schedules,
+            Long companyId,
+            LocalDate date,
+            LocalTime time
+    ) {
+
+        for (
+                AttendanceSchedule schedule
+                : schedules
+        ) {
+
+            /*
+             * Never use another company's schedule.
+             */
+            if (
+                    !companyId.equals(
+                            schedule.getCompanyId()
+                    )
+            ) {
+                continue;
+            }
 
             if (!schedule.isEnabled()) {
                 continue;
             }
 
-            if (schedule.getStartTime() == null
-                    || schedule.getEndTime() == null) {
+            if (
+                    schedule.getStartTime() == null
+                            || schedule.getEndTime() == null
+            ) {
                 continue;
             }
 
-            if (!matchesDate(schedule, date)) {
+            if (
+                    !matchesDate(
+                            schedule,
+                            date
+                    )
+            ) {
                 continue;
             }
 
             /*
-             * Start inclusive.
-             * End exclusive.
+             * Start = inclusive
+             *
+             * End = exclusive
+             *
+             * Example:
+             *
+             * 08:00 -> 17:00
+             *
+             * 08:00 = active
+             * 16:59 = active
+             * 17:00 = inactive
              */
             boolean insideTime =
                     !time.isBefore(
                             schedule.getStartTime()
                     )
-                    &&
-                    time.isBefore(
-                            schedule.getEndTime()
-                    );
+                            &&
+                            time.isBefore(
+                                    schedule.getEndTime()
+                            );
 
             if (insideTime) {
                 return schedule;
@@ -160,6 +295,12 @@ public class AttendanceScheduler {
 
         return null;
     }
+
+    /*
+     * ============================================================
+     * DATE MATCHING
+     * ============================================================
+     */
 
     private boolean matchesDate(
             AttendanceSchedule schedule,
@@ -174,29 +315,54 @@ public class AttendanceScheduler {
         }
 
         /*
-         * One specific date.
+         * --------------------------------------------------------
+         * ONCE
+         * --------------------------------------------------------
          */
-        if ("ONCE".equalsIgnoreCase(type)) {
+
+        if (
+                "ONCE".equalsIgnoreCase(
+                        type
+                )
+        ) {
 
             return schedule.getScheduleDate() != null
                     && date.equals(
-                    schedule.getScheduleDate()
-            );
+                            schedule.getScheduleDate()
+                    );
         }
 
         /*
-         * Every day.
+         * --------------------------------------------------------
+         * DAILY
+         * --------------------------------------------------------
          */
-        if ("DAILY".equalsIgnoreCase(type)) {
+
+        if (
+                "DAILY".equalsIgnoreCase(
+                        type
+                )
+        ) {
+
             return true;
         }
 
         /*
-         * Every selected weekday.
+         * --------------------------------------------------------
+         * WEEKLY
+         * --------------------------------------------------------
          */
-        if ("WEEKLY".equalsIgnoreCase(type)) {
 
-            if (schedule.getDayOfWeek() == null) {
+        if (
+                "WEEKLY".equalsIgnoreCase(
+                        type
+                )
+        ) {
+
+            if (
+                    schedule.getDayOfWeek() == null
+                            || schedule.getDayOfWeek().isBlank()
+            ) {
                 return false;
             }
 

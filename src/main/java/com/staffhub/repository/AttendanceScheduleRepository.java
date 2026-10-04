@@ -20,6 +20,12 @@ public class AttendanceScheduleRepository {
         this.jdbc = jdbc;
     }
 
+    /*
+     * ============================================================
+     * FIND ALL FOR CURRENT COMPANY
+     * ============================================================
+     */
+
     public List<AttendanceSchedule> findAll(
             Long companyId
     ) {
@@ -28,6 +34,7 @@ public class AttendanceScheduleRepository {
                 """
                 SELECT
                     id,
+                    company_id,
                     schedule_name,
                     schedule_type,
                     schedule_date,
@@ -40,12 +47,64 @@ public class AttendanceScheduleRepository {
                     updated_at
                 FROM dbo.attendance_schedules
                 WHERE company_id = ?
-                ORDER BY start_time, id
+                ORDER BY
+                    start_time,
+                    id
                 """,
                 this::map,
                 companyId
         );
     }
+
+    /*
+     * ============================================================
+     * FIND ALL ENABLED SCHEDULES FOR BACKGROUND SCHEDULER
+     * ============================================================
+     *
+     * IMPORTANT:
+     *
+     * This method does NOT use CompanyContextService.
+     *
+     * AttendanceScheduler runs in the background and there is no
+     * authenticated HTTP user.
+     *
+     * Therefore all enabled company schedules are loaded here.
+     */
+
+    public List<AttendanceSchedule> findAllForScheduler() {
+
+        return jdbc.query(
+                """
+                SELECT
+                    id,
+                    company_id,
+                    schedule_name,
+                    schedule_type,
+                    schedule_date,
+                    day_of_week,
+                    start_time,
+                    end_time,
+                    enabled,
+                    created_by,
+                    created_at,
+                    updated_at
+                FROM dbo.attendance_schedules
+                WHERE enabled = 1
+                  AND company_id IS NOT NULL
+                ORDER BY
+                    company_id,
+                    start_time,
+                    id
+                """,
+                this::map
+        );
+    }
+
+    /*
+     * ============================================================
+     * FIND BY ID
+     * ============================================================
+     */
 
     public AttendanceSchedule findById(
             Long id,
@@ -57,6 +116,7 @@ public class AttendanceScheduleRepository {
                         """
                         SELECT
                             id,
+                            company_id,
                             schedule_name,
                             schedule_type,
                             schedule_date,
@@ -81,6 +141,12 @@ public class AttendanceScheduleRepository {
                 : result.get(0);
     }
 
+    /*
+     * ============================================================
+     * FIND LATEST
+     * ============================================================
+     */
+
     public AttendanceSchedule findLatest(
             Long companyId
     ) {
@@ -90,6 +156,7 @@ public class AttendanceScheduleRepository {
                         """
                         SELECT TOP 1
                             id,
+                            company_id,
                             schedule_name,
                             schedule_type,
                             schedule_date,
@@ -113,6 +180,12 @@ public class AttendanceScheduleRepository {
                 : result.get(0);
     }
 
+    /*
+     * ============================================================
+     * CREATE
+     * ============================================================
+     */
+
     public void create(
             AttendanceSchedule schedule,
             Long companyId
@@ -134,11 +207,15 @@ public class AttendanceScheduleRepository {
                     enabled,
                     created_by
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES
+                (
+                    ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?
+                )
                 """,
                 companyId,
-                schedule.getScheduleName(),
-                schedule.getScheduleType(),
+                schedule.getScheduleName().trim(),
+                normalizeType(schedule.getScheduleType()),
                 schedule.getScheduleDate() == null
                         ? null
                         : Date.valueOf(
@@ -157,6 +234,12 @@ public class AttendanceScheduleRepository {
                 schedule.getCreatedBy()
         );
     }
+
+    /*
+     * ============================================================
+     * UPDATE
+     * ============================================================
+     */
 
     public void update(
             Long id,
@@ -192,8 +275,10 @@ public class AttendanceScheduleRepository {
                 WHERE id = ?
                   AND company_id = ?
                 """,
-                schedule.getScheduleName(),
-                schedule.getScheduleType(),
+                schedule.getScheduleName().trim(),
+                normalizeType(
+                        schedule.getScheduleType()
+                ),
                 schedule.getScheduleDate() == null
                         ? null
                         : Date.valueOf(
@@ -213,6 +298,12 @@ public class AttendanceScheduleRepository {
                 companyId
         );
     }
+
+    /*
+     * ============================================================
+     * DELETE
+     * ============================================================
+     */
 
     public void delete(
             Long id,
@@ -237,9 +328,21 @@ public class AttendanceScheduleRepository {
         }
     }
 
+    /*
+     * ============================================================
+     * VALIDATION
+     * ============================================================
+     */
+
     private void validate(
             AttendanceSchedule schedule
     ) {
+
+        if (schedule == null) {
+            throw new IllegalArgumentException(
+                    "Attendance schedule is required"
+            );
+        }
 
         if (
                 schedule.getScheduleName() == null
@@ -260,9 +363,9 @@ public class AttendanceScheduleRepository {
         }
 
         String type =
-                schedule.getScheduleType()
-                        .trim()
-                        .toUpperCase();
+                normalizeType(
+                        schedule.getScheduleType()
+                );
 
         if (
                 !type.equals("ONCE")
@@ -299,7 +402,7 @@ public class AttendanceScheduleRepository {
                         && schedule.getScheduleDate() == null
         ) {
             throw new IllegalArgumentException(
-                    "Schedule date is required"
+                    "Schedule date is required for ONCE schedule"
             );
         }
 
@@ -310,10 +413,38 @@ public class AttendanceScheduleRepository {
                 ) == null
         ) {
             throw new IllegalArgumentException(
-                    "Day of week is required"
+                    "Day of week is required for WEEKLY schedule"
             );
         }
     }
+
+    /*
+     * ============================================================
+     * NORMALIZE SCHEDULE TYPE
+     * ============================================================
+     */
+
+    private String normalizeType(
+            String value
+    ) {
+
+        if (
+                value == null
+                        || value.isBlank()
+        ) {
+            return null;
+        }
+
+        return value
+                .trim()
+                .toUpperCase();
+    }
+
+    /*
+     * ============================================================
+     * NORMALIZE DAY
+     * ============================================================
+     */
 
     private String normalizeDay(
             String value
@@ -327,30 +458,45 @@ public class AttendanceScheduleRepository {
         }
 
         String day =
-                value.trim()
+                value
+                        .trim()
                         .toUpperCase();
 
         return switch (day) {
+
             case "1", "MONDAY" ->
                     "MONDAY";
+
             case "2", "TUESDAY" ->
                     "TUESDAY";
+
             case "3", "WEDNESDAY" ->
                     "WEDNESDAY";
+
             case "4", "THURSDAY" ->
                     "THURSDAY";
+
             case "5", "FRIDAY" ->
                     "FRIDAY";
+
             case "6", "SATURDAY" ->
                     "SATURDAY";
+
             case "7", "SUNDAY" ->
                     "SUNDAY";
+
             default ->
                     throw new IllegalArgumentException(
                             "Invalid day of week"
                     );
         };
     }
+
+    /*
+     * ============================================================
+     * RESULT MAPPER
+     * ============================================================
+     */
 
     private AttendanceSchedule map(
             java.sql.ResultSet rs,
@@ -363,6 +509,13 @@ public class AttendanceScheduleRepository {
         schedule.setId(
                 rs.getLong("id")
         );
+
+        long companyId =
+                rs.getLong("company_id");
+
+        if (!rs.wasNull()) {
+            schedule.setCompanyId(companyId);
+        }
 
         schedule.setScheduleName(
                 rs.getString("schedule_name")

@@ -1,7 +1,8 @@
 package com.staffhub.controller;
 
 import com.staffhub.model.AttendanceSchedule;
-import com.staffhub.repository.AttendanceScheduleRepository;
+import com.staffhub.service.AttendanceScheduleService;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -12,55 +13,48 @@ import java.util.Map;
 @CrossOrigin
 public class AttendanceScheduleController {
 
-    private final AttendanceScheduleRepository repository;
+    private final AttendanceScheduleService service;
 
     public AttendanceScheduleController(
-            AttendanceScheduleRepository repository
+            AttendanceScheduleService service
     ) {
-        this.repository = repository;
+        this.service = service;
     }
+
+    /*
+     * ============================================================
+     * GET ALL SCHEDULES
+     * ============================================================
+     */
 
     @GetMapping
-    public List<AttendanceSchedule> all() {
+    public List<AttendanceSchedule> getAll() {
 
-        return repository.findAll();
+        return service.findAll();
     }
 
-    @GetMapping("/{id}")
-    public AttendanceSchedule get(
-            @PathVariable Long id
-    ) {
-
-        AttendanceSchedule schedule =
-                repository.findById(id);
-
-        if (schedule == null) {
-            throw new IllegalArgumentException(
-                    "Attendance schedule not found"
-            );
-        }
-
-        return schedule;
-    }
+    /*
+     * ============================================================
+     * CREATE
+     * ============================================================
+     */
 
     @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
     public AttendanceSchedule create(
             @RequestBody AttendanceSchedule schedule
     ) {
 
-        repository.create(schedule);
-
-        return repository.findAll()
-                .stream()
-                .filter(s ->
-                        s.getScheduleName()
-                                .equals(
-                                        schedule.getScheduleName()
-                                )
-                )
-                .findFirst()
-                .orElse(schedule);
+        return service.create(
+                schedule
+        );
     }
+
+    /*
+     * ============================================================
+     * UPDATE
+     * ============================================================
+     */
 
     @PutMapping("/{id}")
     public AttendanceSchedule update(
@@ -68,22 +62,24 @@ public class AttendanceScheduleController {
             @RequestBody AttendanceSchedule schedule
     ) {
 
-        repository.update(
+        return service.update(
                 id,
                 schedule
         );
-
-        schedule.setId(id);
-
-        return repository.findById(id);
     }
+
+    /*
+     * ============================================================
+     * DELETE
+     * ============================================================
+     */
 
     @DeleteMapping("/{id}")
     public Map<String, String> delete(
             @PathVariable Long id
     ) {
 
-        repository.delete(id);
+        service.delete(id);
 
         return Map.of(
                 "message",

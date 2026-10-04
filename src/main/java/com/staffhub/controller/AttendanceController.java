@@ -5,9 +5,9 @@ import com.staffhub.model.AttendanceMonitor;
 import com.staffhub.model.AttendanceRecord;
 import com.staffhub.model.AttendanceSchedule;
 import com.staffhub.repository.AttendanceMonitorRepository;
+import com.staffhub.service.AttendanceScheduleService;
 import com.staffhub.service.AttendanceService;
 import com.staffhub.service.CompanyContextService;
-import com.staffhub.service.AttendanceScheduleService;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -19,27 +19,28 @@ import java.util.Map;
 public class AttendanceController {
 
     private final AttendanceService service;
+
     private final AttendanceMonitorRepository monitorRepository;
+
     private final AttendanceScheduleService scheduleService;
+
     private final CompanyContextService companyContextService;
 
     public AttendanceController(
-        AttendanceService service,
-        AttendanceMonitorRepository monitorRepository,
-        AttendanceScheduleService scheduleService,
-        CompanyContextService companyContextService
-) {
-    this.service = service;
-    this.monitorRepository = monitorRepository;
-    this.scheduleService = scheduleService;
-    this.companyContextService = companyContextService;
-}
+            AttendanceService service,
+            AttendanceMonitorRepository monitorRepository,
+            AttendanceScheduleService scheduleService,
+            CompanyContextService companyContextService
+    ) {
+        this.service = service;
+        this.monitorRepository = monitorRepository;
+        this.scheduleService = scheduleService;
+        this.companyContextService = companyContextService;
+    }
 
-    /*
-     * ============================================================
-     * PUBLIC QR MONITOR
-     * ============================================================
-     */
+    // ============================================================
+    // PUBLIC QR MONITOR
+    // ============================================================
 
     @GetMapping("/monitor")
     public AttendanceMonitor monitor(
@@ -51,90 +52,70 @@ public class AttendanceController {
         );
     }
 
-    /*
-     * ============================================================
-     * ACCEPT NEW MONITOR
-     * ============================================================
-     */
+    // ============================================================
+    // AUTHORIZE
+    // ============================================================
 
     @PostMapping("/monitor/authorize")
     public AttendanceMonitor authorize(
             @RequestBody Map<String, String> body
     ) {
 
+        if (
+                body == null
+                        || body.get("code") == null
+        ) {
+            throw new IllegalArgumentException(
+                    "Activation code is required"
+            );
+        }
+
         return service.authorizeMonitor(
                 body.get("code")
         );
     }
 
-    /*
-     * ============================================================
-     * ACCEPTED MONITORS
-     * ============================================================
-     */
+    // ============================================================
+    // ACCEPTED MONITORS
+    // ============================================================
 
     @GetMapping("/monitor/accepted")
-    public List<AttendanceMonitor>
-    acceptedMonitors() {
+    public List<AttendanceMonitor> acceptedMonitors() {
 
         return service.getAcceptedMonitors();
     }
 
-    /*
-     * ============================================================
-     * ACTIVATE
-     * ============================================================
-     */
+    // ============================================================
+    // ACTIVATE
+    // ============================================================
 
     @PostMapping("/monitor/activate")
     public AttendanceMonitor activate(
             @RequestBody Map<String, Object> body
     ) {
 
-        Object monitorId =
-                body == null
-                        ? null
-                        : body.get("monitorId");
-
-        if (monitorId == null) {
-            throw new IllegalArgumentException(
-                    "monitorId is required"
-            );
-        }
+        Long monitorId =
+                readMonitorId(body);
 
         return service.activate(
-                Long.valueOf(
-                        monitorId.toString()
-                )
+                monitorId
         );
     }
 
-    /*
-     * ============================================================
-     * DEACTIVATE
-     * ============================================================
-     */
+    // ============================================================
+    // DEACTIVATE
+    // ============================================================
 
     @PostMapping("/monitor/deactivate")
     public Map<String, String> deactivate(
             @RequestBody Map<String, Object> body
     ) {
 
-        Object monitorId =
-                body == null
-                        ? null
-                        : body.get("monitorId");
-
-        if (monitorId == null) {
-            throw new IllegalArgumentException(
-                    "monitorId is required"
-            );
-        }
+        Long monitorId =
+                readMonitorId(body);
 
         service.deactivate(
-                Long.valueOf(
-                        monitorId.toString()
-                ),
+                monitorId,
                 "MANUAL"
         );
 
@@ -144,32 +125,20 @@ public class AttendanceController {
         );
     }
 
-    /*
-     * ============================================================
-     * REJECT
-     * ============================================================
-     */
+    // ============================================================
+    // REJECT
+    // ============================================================
 
     @PostMapping("/monitor/reject")
     public Map<String, String> reject(
             @RequestBody Map<String, Object> body
     ) {
 
-        Object monitorId =
-                body == null
-                        ? null
-                        : body.get("monitorId");
-
-        if (monitorId == null) {
-            throw new IllegalArgumentException(
-                    "monitorId is required"
-            );
-        }
+        Long monitorId =
+                readMonitorId(body);
 
         service.rejectMonitor(
-                Long.valueOf(
-                        monitorId.toString()
-                )
+                monitorId
         );
 
         return Map.of(
@@ -178,40 +147,26 @@ public class AttendanceController {
         );
     }
 
-    /*
-     * ============================================================
-     * ROTATE
-     * ============================================================
-     */
+    // ============================================================
+    // ROTATE
+    // ============================================================
 
     @PostMapping("/monitor/rotate")
     public AttendanceMonitor rotate(
             @RequestBody Map<String, Object> body
     ) {
 
-        Object monitorId =
-                body == null
-                        ? null
-                        : body.get("monitorId");
-
-        if (monitorId == null) {
-            throw new IllegalArgumentException(
-                    "monitorId is required"
-            );
-        }
+        Long monitorId =
+                readMonitorId(body);
 
         return service.rotateQr(
-                Long.valueOf(
-                        monitorId.toString()
-                )
+                monitorId
         );
     }
 
-    /*
-     * ============================================================
-     * QR SCAN
-     * ============================================================
-     */
+    // ============================================================
+    // QR SCAN
+    // ============================================================
 
     @PostMapping("/scan")
     public AttendanceRecord scan(
@@ -238,31 +193,33 @@ public class AttendanceController {
         );
     }
 
-    /*
-     * ============================================================
-     * EMPLOYEE
-     * ============================================================
-     */
+    // ============================================================
+    // EMPLOYEE ATTENDANCE
+    // ============================================================
 
     @GetMapping("/employee/{employeeId}/today")
     public AttendanceRecord today(
             @PathVariable String employeeId
     ) {
-        return service.today(employeeId);
+
+        return service.today(
+                employeeId
+        );
     }
 
     @GetMapping("/employee/{employeeId}")
     public List<AttendanceRecord> history(
             @PathVariable String employeeId
     ) {
-        return service.history(employeeId);
+
+        return service.history(
+                employeeId
+        );
     }
 
-    /*
-     * ============================================================
-     * MANAGEMENT
-     * ============================================================
-     */
+    // ============================================================
+    // MANAGEMENT
+    // ============================================================
 
     @GetMapping("/records")
     public List<AttendanceRecord> records(
@@ -298,10 +255,18 @@ public class AttendanceController {
 
         service.correct(
                 id,
-                body.get("checkIn"),
-                body.get("checkOut"),
-                body.get("status"),
-                body.get("reason")
+                body == null
+                        ? null
+                        : body.get("checkIn"),
+                body == null
+                        ? null
+                        : body.get("checkOut"),
+                body == null
+                        ? null
+                        : body.get("status"),
+                body == null
+                        ? null
+                        : body.get("reason")
         );
 
         return Map.of(
@@ -310,11 +275,9 @@ public class AttendanceController {
         );
     }
 
-    /*
-     * ============================================================
-     * EVENTS
-     * ============================================================
-     */
+    // ============================================================
+    // EVENTS
+    // ============================================================
 
     @GetMapping("/events")
     public List<AttendanceEvent> events(
@@ -331,22 +294,18 @@ public class AttendanceController {
         );
     }
 
-    /*
-     * ============================================================
-     * SCHEDULES
-     * ============================================================
-     */
-
+    // ============================================================
+    // SCHEDULES
+    // ============================================================
+    {/*
     @GetMapping("/schedules")
-    public List<AttendanceSchedule>
-    schedules() {
+    public List<AttendanceSchedule> schedules() {
 
         return scheduleService.findAll();
     }
 
     @PostMapping("/schedules")
-    public AttendanceSchedule
-    createSchedule(
+    public AttendanceSchedule createSchedule(
             @RequestBody AttendanceSchedule schedule
     ) {
 
@@ -356,8 +315,7 @@ public class AttendanceController {
     }
 
     @PutMapping("/schedules/{id}")
-    public AttendanceSchedule
-    updateSchedule(
+    public AttendanceSchedule updateSchedule(
             @PathVariable Long id,
             @RequestBody AttendanceSchedule schedule
     ) {
@@ -369,20 +327,55 @@ public class AttendanceController {
     }
 
     @DeleteMapping("/schedules/{id}")
-    public Map<String, String>
-    deleteSchedule(
+    public Map<String, String> deleteSchedule(
             @PathVariable Long id
     ) {
 
-        scheduleService.delete(id);
+        scheduleService.delete(
+                id
+        );
 
         return Map.of(
                 "message",
                 "Attendance schedule deleted successfully"
         );
     }
+     */}
+    // ============================================================
+    // HELPERS
+    // ============================================================
 
     private Long getCompanyId() {
-    return companyContextService.getCurrentCompanyId();
-}
+
+        return companyContextService
+                .getCurrentCompanyId();
+    }
+
+    private Long readMonitorId(
+            Map<String, Object> body
+    ) {
+
+        if (
+                body == null
+                        || body.get("monitorId") == null
+        ) {
+            throw new IllegalArgumentException(
+                    "monitorId is required"
+            );
+        }
+
+        try {
+
+            return Long.valueOf(
+                    body.get("monitorId")
+                            .toString()
+            );
+
+        } catch (NumberFormatException exception) {
+
+            throw new IllegalArgumentException(
+                    "monitorId must be a valid number"
+            );
+        }
+    }
 }

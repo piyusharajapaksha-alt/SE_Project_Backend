@@ -8,19 +8,27 @@ public class AttendanceSchedule {
 
     private Long id;
 
+    /**
+     * Company that owns this attendance schedule.
+     *
+     * This is populated by the backend/database.
+     * The frontend should not be trusted to choose the company.
+     */
+    private Long companyId;
+
     private String scheduleName;
 
     /*
      * ONCE   = specific date
      * DAILY  = every day
-     * WEEKLY = selected day of week
+     * WEEKLY = selected weekday
      */
     private String scheduleType;
 
     private LocalDate scheduleDate;
 
     /*
-     * MONDAY, TUESDAY, etc.
+     * MONDAY, TUESDAY, WEDNESDAY, etc.
      */
     private String dayOfWeek;
 
@@ -45,6 +53,14 @@ public class AttendanceSchedule {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public Long getCompanyId() {
+        return companyId;
+    }
+
+    public void setCompanyId(Long companyId) {
+        this.companyId = companyId;
     }
 
     public String getScheduleName() {
