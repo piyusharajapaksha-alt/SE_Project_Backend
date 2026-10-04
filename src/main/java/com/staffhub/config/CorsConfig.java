@@ -18,19 +18,18 @@ public class CorsConfig {
         return new WebMvcConfigurer() {
 
             @Override
-            public void addCorsMappings(
-                    CorsRegistry registry
-            ) {
+            public void addCorsMappings(CorsRegistry registry) {
 
                 registry.addMapping("/**")
-
                         .allowedOriginPatterns(
-
                                 // Local development
                                 "http://localhost:*",
                                 "http://127.0.0.1:*",
 
-                                // Configured frontend
+                                // Vercel production frontend
+                                "https://sestaffhub.vercel.app",
+
+                                // Environment-configured frontend
                                 frontendUrl,
 
                                 // LAN development
@@ -38,7 +37,6 @@ public class CorsConfig {
                                 "http://172.*.*.*:*",
                                 "http://192.168.*.*:*"
                         )
-
                         .allowedMethods(
                                 "GET",
                                 "POST",
@@ -47,13 +45,8 @@ public class CorsConfig {
                                 "DELETE",
                                 "OPTIONS"
                         )
-
                         .allowedHeaders("*")
-
-                        // IMPORTANT:
-                        // Required for JSESSIONID and XSRF cookies.
                         .allowCredentials(true)
-
                         .maxAge(3600);
             }
         };
