@@ -1036,3 +1036,505 @@ BEGIN
         ON dbo.companies(owner_employee_id);
 END;
 GO
+
+USE StaffHub;
+GO
+
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+
+PRINT '============================================';
+PRINT 'STAFFHUB OWNER SEPARATION REPAIR';
+PRINT '============================================';
+
+
+/* =========================================================
+   STEP 1
+   Make employee_id nullable in authentication table.
+   Owners will have:
+       employee_id = NULL
+       owner_id     = actual owner ID
+   Employees will have:
+       employee_id = actual employee ID
+       owner_id     = NULL
+   ========================================================= */
+
+PRINT '';
+PRINT 'STEP 1: Making staffhub_auth_users.employee_id nullable...';
+
+IF EXISTS
+(
+    SELECT 1
+    FROM sys.columns
+    WHERE object_id = OBJECT_ID('dbo.staffhub_auth_users')
+      AND name = 'employee_id'
+      AND is_nullable = 0
+)
+BEGIN
+    ALTER TABLE dbo.staffhub_auth_users
+    ALTER COLUMN employee_id BIGINT NULL;
+
+    PRINT 'employee_id is now nullable.';
+END
+ELSE
+BEGIN
+    PRINT 'employee_id is already nullable.';
+END;
+GO
+
+
+/* =========================================================
+   STEP 2
+   Fix the existing Owner authentication account.
+   Owner must NOT reference an employee.
+   ========================================================= */
+
+PRINT '';
+PRINT 'STEP 2: Fixing Owner authentication account...';
+
+UPDATE a
+SET a.employee_id = NULL
+FROM dbo.staffhub_auth_users a
+WHERE a.owner_id IS NOT NULL;
+
+PRINT 'Owner authentication account updated.';
+GO
+
+
+/* =========================================================
+   STEP 3
+   Verify owner authentication records.
+   ========================================================= */
+
+PRINT '';
+PRINT 'STEP 3: Checking authentication records...';
+
+SELECT
+    id,
+    email,
+    employee_id,
+    owner_id,
+    enabled
+FROM dbo.staffhub_auth_users
+ORDER BY id;
+GO
+
+
+/* =========================================================
+   STEP 4
+   Drop foreign keys referencing companies.owner_employee_id.
+   We detect them automatically instead of assuming a name.
+   ========================================================= */
+
+PRINT '';
+PRINT 'STEP 4: Removing foreign keys referencing owner_employee_id...';
+
+DECLARE @sql NVARCHAR(MAX) = N'';
+
+SELECT @sql = @sql +
+    N'ALTER TABLE '
+    + QUOTENAME(OBJECT_SCHEMA_NAME(fk.parent_object_id))
+    + N'.'
+    + QUOTENAME(OBJECT_NAME(fk.parent_object_id))
+    + N' DROP CONSTRAINT '
+    + QUOTENAME(fk.name)
+    + N';'
+    + CHAR(13) + CHAR(10)
+FROM sys.foreign_keys fk
+INNER JOIN sys.foreign_key_columns fkc
+    ON fk.object_id = fkc.constraint_object_id
+INNER JOIN sys.columns c
+    ON c.object_id = fkc.parent_object_id
+   AND c.column_id = fkc.parent_column_id
+WHERE fk.parent_object_id = OBJECT_ID('dbo.companies')
+  AND c.name = 'owner_employee_id';
+
+IF @sql <> N''
+BEGIN
+    EXEC sys.sp_executesql @sql;
+    PRINT 'Old owner_employee_id foreign key(s) removed.';
+END
+ELSE
+BEGIN
+    PRINT 'No foreign key found for owner_employee_id.';
+END;
+GO
+
+
+/* =========================================================
+   STEP 5
+   Drop old unique constraint UQ_companies_owner if it exists.
+   ========================================================= */
+
+PRINT '';
+PRINT 'STEP 5: Removing old UQ_companies_owner...';
+
+IF EXISTS
+(
+    SELECT 1
+    FROM sys.key_constraints
+    WHERE parent_object_id = OBJECT_ID('dbo.companies')
+      AND name = 'UQ_companies_owner'
+)
+BEGIN
+    ALTER TABLE dbo.companies
+    DROP CONSTRAINT UQ_companies_owner;
+
+    PRINT 'UQ_companies_owner constraint dropped.';
+END
+ELSE
+BEGIN
+    PRINT 'UQ_companies_owner constraint does not exist.';
+END;
+GO
+
+
+/* =========================================================
+   STEP 6
+   Drop old index IX_companies_owner_employee_id.
+   ========================================================= */
+
+PRINT '';
+PRINT 'STEP 6: Removing old owner_employee_id index...';
+
+IF EXISTS
+(
+    SELECT 1
+    FROM sys.indexes
+    WHERE object_id = OBJECT_ID('dbo.companies')
+      AND name = 'IX_companies_owner_employee_id'
+)
+BEGIN
+    DROP INDEX IX_companies_owner_employee_id
+    ON dbo.companies;
+
+    PRINT 'IX_companies_owner_employee_id dropped.';
+END
+ELSE
+BEGIN
+    PRINT 'IX_companies_owner_employee_id does not exist.';
+END;
+GO
+
+
+/* =========================================================
+   STEP 7
+   Drop old owner_employee_id column.
+   ========================================================= */
+
+PRINT '';
+PRINT 'STEP 7: Removing companies.owner_employee_id...';
+
+IF EXISTS
+(
+    SELECT 1
+    FROM sys.columns
+    WHERE object_id = OBJECT_ID('dbo.companies')
+      AND name = 'owner_employee_id'
+)
+BEGIN
+    ALTER TABLE dbo.companies
+    DROP COLUMN owner_employee_id;
+
+    PRINT 'companies.owner_employee_id removed.';
+END
+ELSE
+BEGIN
+    PRINT 'owner_employee_id column already removed.';
+END;
+GO
+
+
+/* =========================================================
+   STEP 8
+   Make sure companies.owner_id exists.
+   ========================================================= */
+
+PRINT '';
+PRINT 'STEP 8: Checking companies.owner_id...';
+
+IF NOT EXISTS
+(
+    SELECT 1
+    FROM sys.columns
+    WHERE object_id = OBJECT_ID('dbo.companies')
+      AND name = 'owner_id'
+)
+BEGIN
+    ALTER TABLE dbo.companies
+    ADD owner_id BIGINT NULL;
+
+    PRINT 'companies.owner_id created.';
+END
+ELSE
+BEGIN
+    PRINT 'companies.owner_id already exists.';
+END;
+GO
+
+
+/* =========================================================
+   STEP 9
+   Make sure the existing company points to the owner.
+   ========================================================= */
+
+PRINT '';
+PRINT 'STEP 9: Checking company owner relationship...';
+
+SELECT
+    id,
+    company_name,
+    owner_id
+FROM dbo.companies;
+GO
+
+
+/* =========================================================
+   STEP 10
+   Create FK companies.owner_id -> company_owners.id
+   if it does not already exist.
+   ========================================================= */
+
+PRINT '';
+PRINT 'STEP 10: Creating company owner foreign key...';
+
+IF NOT EXISTS
+(
+    SELECT 1
+    FROM sys.foreign_keys
+    WHERE parent_object_id = OBJECT_ID('dbo.companies')
+      AND name = 'FK_companies_owner'
+)
+BEGIN
+    ALTER TABLE dbo.companies
+    ADD CONSTRAINT FK_companies_owner
+        FOREIGN KEY (owner_id)
+        REFERENCES dbo.company_owners(id);
+
+    PRINT 'FK_companies_owner created.';
+END
+ELSE
+BEGIN
+    PRINT 'FK_companies_owner already exists.';
+END;
+GO
+
+
+/* =========================================================
+   STEP 11
+   Make sure one company cannot have duplicate owner.
+   ========================================================= */
+
+PRINT '';
+PRINT 'STEP 11: Creating owner unique index...';
+
+IF NOT EXISTS
+(
+    SELECT 1
+    FROM sys.indexes
+    WHERE object_id = OBJECT_ID('dbo.companies')
+      AND name = 'UX_companies_owner_id'
+)
+BEGIN
+    CREATE UNIQUE INDEX UX_companies_owner_id
+    ON dbo.companies(owner_id)
+    WHERE owner_id IS NOT NULL;
+
+    PRINT 'UX_companies_owner_id created.';
+END
+ELSE
+BEGIN
+    PRINT 'UX_companies_owner_id already exists.';
+END;
+GO
+
+
+/* =========================================================
+   STEP 12
+   Make sure owner_id foreign key exists in auth table.
+   ========================================================= */
+
+PRINT '';
+PRINT 'STEP 12: Checking authentication owner foreign key...';
+
+IF NOT EXISTS
+(
+    SELECT 1
+    FROM sys.foreign_keys
+    WHERE parent_object_id = OBJECT_ID('dbo.staffhub_auth_users')
+      AND name = 'FK_staffhub_auth_users_owner'
+)
+BEGIN
+    ALTER TABLE dbo.staffhub_auth_users
+    ADD CONSTRAINT FK_staffhub_auth_users_owner
+        FOREIGN KEY (owner_id)
+        REFERENCES dbo.company_owners(id);
+
+    PRINT 'FK_staffhub_auth_users_owner created.';
+END
+ELSE
+BEGIN
+    PRINT 'FK_staffhub_auth_users_owner already exists.';
+END;
+GO
+
+
+/* =========================================================
+   STEP 13
+   Make sure only ONE account type can be used.
+   Employee:
+       employee_id != NULL
+       owner_id = NULL
+
+   Owner:
+       employee_id = NULL
+       owner_id != NULL
+   ========================================================= */
+
+PRINT '';
+PRINT 'STEP 13: Creating account type validation...';
+
+IF NOT EXISTS
+(
+    SELECT 1
+    FROM sys.check_constraints
+    WHERE parent_object_id = OBJECT_ID('dbo.staffhub_auth_users')
+      AND name = 'CK_staffhub_auth_users_one_principal'
+)
+BEGIN
+    ALTER TABLE dbo.staffhub_auth_users
+    ADD CONSTRAINT CK_staffhub_auth_users_one_principal
+    CHECK
+    (
+        (employee_id IS NOT NULL AND owner_id IS NULL)
+        OR
+        (employee_id IS NULL AND owner_id IS NOT NULL)
+    );
+
+    PRINT 'Account type check constraint created.';
+END
+ELSE
+BEGIN
+    PRINT 'Account type check constraint already exists.';
+END;
+GO
+
+
+/* =========================================================
+   STEP 14
+   Ensure one owner has only one authentication account.
+   ========================================================= */
+
+PRINT '';
+PRINT 'STEP 14: Creating unique owner authentication index...';
+
+IF NOT EXISTS
+(
+    SELECT 1
+    FROM sys.indexes
+    WHERE object_id = OBJECT_ID('dbo.staffhub_auth_users')
+      AND name = 'UX_staffhub_auth_users_owner_id'
+)
+BEGIN
+    CREATE UNIQUE INDEX UX_staffhub_auth_users_owner_id
+    ON dbo.staffhub_auth_users(owner_id)
+    WHERE owner_id IS NOT NULL;
+
+    PRINT 'UX_staffhub_auth_users_owner_id created.';
+END
+ELSE
+BEGIN
+    PRINT 'UX_staffhub_auth_users_owner_id already exists.';
+END;
+GO
+
+
+/* =========================================================
+   FINAL VALIDATION
+   ========================================================= */
+
+PRINT '';
+PRINT '============================================';
+PRINT 'FINAL OWNER SEPARATION CHECK';
+PRINT '============================================';
+
+PRINT '';
+PRINT '1. Authentication accounts:';
+
+SELECT
+    id,
+    email,
+    employee_id,
+    owner_id,
+    enabled
+FROM dbo.staffhub_auth_users
+ORDER BY id;
+
+
+PRINT '';
+PRINT '2. Company owners:';
+
+SELECT
+    id,
+    first_name,
+    last_name,
+    email,
+    phone
+FROM dbo.company_owners
+ORDER BY id;
+
+
+PRINT '';
+PRINT '3. Companies:';
+
+SELECT
+    id,
+    company_name,
+    owner_id
+FROM dbo.companies
+ORDER BY id;
+
+
+PRINT '';
+PRINT '4. Checking old owner_employee_id column...';
+
+IF EXISTS
+(
+    SELECT 1
+    FROM sys.columns
+    WHERE object_id = OBJECT_ID('dbo.companies')
+      AND name = 'owner_employee_id'
+)
+BEGIN
+    THROW 50001, 'ERROR: owner_employee_id still exists.', 1;
+END
+ELSE
+BEGIN
+    PRINT 'OK: owner_employee_id has been removed.';
+END;
+
+
+PRINT '';
+PRINT '5. Checking Owner authentication account...';
+
+IF EXISTS
+(
+    SELECT 1
+    FROM dbo.staffhub_auth_users
+    WHERE owner_id IS NOT NULL
+      AND employee_id IS NOT NULL
+)
+BEGIN
+    THROW 50002, 'ERROR: Owner authentication account still references an employee.', 1;
+END
+ELSE
+BEGIN
+    PRINT 'OK: Owner authentication account does not reference an employee.';
+END;
+
+
+PRINT '';
+PRINT '============================================';
+PRINT 'OWNER SEPARATION REPAIR COMPLETED';
+PRINT '============================================';
+GO

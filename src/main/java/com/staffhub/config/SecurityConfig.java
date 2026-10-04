@@ -1,21 +1,29 @@
 package com.staffhub.config;
 
 import com.staffhub.security.AuthUserDetailsService;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import org.springframework.http.HttpStatus;
+
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
+
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
+
 import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
-import org.springframework.http.HttpStatus;
 
 @Configuration
 @EnableWebSecurity
@@ -24,14 +32,11 @@ public class SecurityConfig {
     private final AuthUserDetailsService userDetailsService;
 
     public SecurityConfig(
-            AuthUserDetailsService userDetailsService
-    ) {
-        this.userDetailsService = userDetailsService;
-    }
+            AuthUserDetailsService userDetailsService) {
 
-    // ==========================================================
-    // PASSWORD ENCODER
-    // ==========================================================
+        this.userDetailsService =
+                userDetailsService;
+    }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -40,159 +45,95 @@ public class SecurityConfig {
                 .createDelegatingPasswordEncoder();
     }
 
-    // ==========================================================
-    // AUTHENTICATION PROVIDER
-    // ==========================================================
-
     @Bean
     public DaoAuthenticationProvider authenticationProvider(
-            PasswordEncoder passwordEncoder
-    ) {
+            PasswordEncoder passwordEncoder) {
 
         DaoAuthenticationProvider provider =
                 new DaoAuthenticationProvider(
-                        userDetailsService
-                );
+                        userDetailsService);
 
-        provider.setPasswordEncoder(passwordEncoder);
+        provider.setPasswordEncoder(
+                passwordEncoder);
 
         return provider;
     }
 
-    // ==========================================================
-    // AUTHENTICATION MANAGER
-    // ==========================================================
-
     @Bean
     public AuthenticationManager authenticationManager(
-            AuthenticationConfiguration configuration
-    ) throws Exception {
+            AuthenticationConfiguration configuration)
+            throws Exception {
 
-        return configuration.getAuthenticationManager();
+        return configuration
+                .getAuthenticationManager();
     }
 
-    // ==========================================================
-    // SECURITY CONTEXT REPOSITORY
-    // ==========================================================
-
     @Bean
-    public SecurityContextRepository securityContextRepository() {
+    public SecurityContextRepository
+    securityContextRepository() {
 
         return new HttpSessionSecurityContextRepository();
     }
 
-    // ==========================================================
-    // CSRF TOKEN REPOSITORY
-    // ==========================================================
-    //
-    // StaffHub is a React SPA.
-    //
-    // We keep the CSRF token in the HTTP session and expose the
-    // token through /api/auth/csrf.
-    //
-    // The React application then sends the token in:
-    //
-    // X-XSRF-TOKEN
-    //
-    // for POST / PUT / PATCH / DELETE requests.
-    //
-    // This avoids depending on JavaScript reading a backend
-    // cookie across different frontend/backend origins.
-    // ==========================================================
-
     @Bean
-    public HttpSessionCsrfTokenRepository csrfTokenRepository() {
+    public HttpSessionCsrfTokenRepository
+    csrfTokenRepository() {
 
         return new HttpSessionCsrfTokenRepository();
     }
-
-    // ==========================================================
-    // SECURITY FILTER CHAIN
-    // ==========================================================
 
     @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             SecurityContextRepository securityContextRepository,
-            HttpSessionCsrfTokenRepository csrfTokenRepository
-    ) throws Exception {
+            HttpSessionCsrfTokenRepository csrfTokenRepository)
+            throws Exception {
 
         http
 
-                // ------------------------------------------------
-                // CORS
-                // ------------------------------------------------
+            .cors(cors -> {})
 
-                .cors(cors -> {})
+            .csrf(csrf -> csrf
 
-                // ------------------------------------------------
-                // CSRF
-                // ------------------------------------------------
+                    .csrfTokenRepository(
+                            csrfTokenRepository)
 
-                .csrf(csrf -> csrf
+                    .ignoringRequestMatchers(
+                            "/api/auth/login",
+                            "/api/auth/register")
+            )
 
-                        .csrfTokenRepository(
-                                csrfTokenRepository
-                        )
+            .authorizeHttpRequests(auth -> auth
 
-                        // Authentication endpoints are intentionally
-                        // excluded because login/register create the
-                        // authenticated session.
-                        .ignoringRequestMatchers(
-                                "/api/auth/login",
-                                "/api/auth/register"
-                        )
-                )
+                    .requestMatchers(
+                            "/api/auth/login",
+                            "/api/auth/register",
+                            "/api/auth/csrf")
+                    .permitAll()
 
-                // ------------------------------------------------
-                // AUTHORIZATION
-                // ------------------------------------------------
+                    .anyRequest()
+                    .authenticated()
+            )
 
-                .authorizeHttpRequests(auth -> auth
+            .formLogin(form ->
+                    form.disable())
 
-                        // Public authentication endpoints
-                        .requestMatchers(
-                                "/api/auth/login",
-                                "/api/auth/register",
-                                "/api/auth/csrf"
-                        ).permitAll()
+            .httpBasic(basic ->
+                    basic.disable())
 
-                        // Everything else requires authentication
-                        .anyRequest().authenticated()
-                )
+            .securityContext(securityContext ->
 
-                // ------------------------------------------------
-                // DISABLE DEFAULT LOGIN MECHANISMS
-                // ------------------------------------------------
+                    securityContext
+                            .securityContextRepository(
+                                    securityContextRepository)
+            )
 
-                .formLogin(form -> form.disable())
+            .exceptionHandling(exception ->
 
-                .httpBasic(basic -> basic.disable())
-
-                // ------------------------------------------------
-                // SECURITY CONTEXT
-                // ------------------------------------------------
-
-                .securityContext(securityContext ->
-
-                        securityContext
-                                .securityContextRepository(
-                                        securityContextRepository
-                                )
-                )
-
-                // ------------------------------------------------
-                // UNAUTHENTICATED API RESPONSE
-                // ------------------------------------------------
-
-                .exceptionHandling(exception ->
-
-                        exception.authenticationEntryPoint(
-                                new HttpStatusEntryPoint(
-                                        HttpStatus.UNAUTHORIZED
-                                )
-                        )
-                );
+                    exception.authenticationEntryPoint(
+                            new HttpStatusEntryPoint(
+                                    HttpStatus.UNAUTHORIZED))
+            );
 
         return http.build();
     }

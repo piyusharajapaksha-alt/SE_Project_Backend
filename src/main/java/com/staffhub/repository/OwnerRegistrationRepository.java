@@ -1,6 +1,7 @@
 package com.staffhub.repository;
 
-import com.staffhub.model.Employee;
+import com.staffhub.model.Company;
+import com.staffhub.model.Owner;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -11,57 +12,120 @@ import java.sql.Statement;
 
 @Repository
 public class OwnerRegistrationRepository {
+
     private final JdbcTemplate jdbcTemplate;
 
-    public OwnerRegistrationRepository(JdbcTemplate jdbcTemplate) {
+    public OwnerRegistrationRepository(
+            JdbcTemplate jdbcTemplate) {
+
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public boolean employeeEmailExists(String email) {
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM employees WHERE LOWER(email) = LOWER(?)",
-                Integer.class, email.trim());
+    public boolean ownerEmailExists(String email) {
+
+        Integer count =
+                jdbcTemplate.queryForObject(
+                        """
+                        SELECT COUNT(*)
+                        FROM company_owners
+                        WHERE LOWER(email) = LOWER(?)
+                        """,
+                        Integer.class,
+                        email.trim());
+
         return count != null && count > 0;
     }
 
-    public Long insertOwnerEmployee(Employee e) {
-        String sql = """
-            INSERT INTO employees
-            (employee_number, first_name, last_name, email, phone, department,
-             position, role, employment_status, hire_date, address,
-             emergency_contact, salary, gender)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """;
+    public boolean authEmailExists(String email) {
 
-        KeyHolder kh = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(
-                    sql, Statement.RETURN_GENERATED_KEYS);
-            ps.setString(1, e.getEmployeeNumber());
-            ps.setString(2, e.getFirstName());
-            ps.setString(3, e.getLastName());
-            ps.setString(4, e.getEmail());
-            ps.setString(5, e.getPhone());
-            ps.setString(6, e.getDepartment());
-            ps.setString(7, e.getPosition());
-            ps.setString(8, e.getRole());
-            ps.setString(9, e.getEmploymentStatus());
-            ps.setObject(10, e.getHireDate());
-            ps.setString(11, e.getAddress());
-            ps.setString(12, e.getEmergencyContact());
-            ps.setBigDecimal(13, e.getSalary());
-            ps.setString(14, e.getGender());
-            return ps;
-        }, kh);
+        Integer count =
+                jdbcTemplate.queryForObject(
+                        """
+                        SELECT COUNT(*)
+                        FROM staffhub_auth_users
+                        WHERE LOWER(email) = LOWER(?)
+                        """,
+                        Integer.class,
+                        email.trim());
 
-        if (kh.getKey() == null) throw new IllegalStateException("Unable to create owner");
-        return kh.getKey().longValue();
+        return count != null && count > 0;
     }
 
-    public void insertAuthUser(Long employeeId, String email, String passwordHash) {
-        jdbcTemplate.update("""
-            INSERT INTO staffhub_auth_users (employee_id, email, password_hash, enabled)
-            VALUES (?, ?, ?, 1)
-            """, employeeId, email, passwordHash);
+    public Long insertOwner(Owner owner) {
+
+        String sql = """
+            INSERT INTO company_owners
+            (
+                first_name,
+                last_name,
+                email,
+                phone,
+                status
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """;
+
+        KeyHolder keyHolder =
+                new GeneratedKeyHolder();
+
+        jdbcTemplate.update(connection -> {
+
+            PreparedStatement ps =
+                    connection.prepareStatement(
+                            sql,
+                            Statement.RETURN_GENERATED_KEYS);
+
+            ps.setString(
+                    1,
+                    owner.getFirstName());
+
+            ps.setString(
+                    2,
+                    owner.getLastName());
+
+            ps.setString(
+                    3,
+                    owner.getEmail());
+
+            ps.setString(
+                    4,
+                    owner.getPhone());
+
+            ps.setString(
+                    5,
+                    owner.getStatus());
+
+            return ps;
+
+        }, keyHolder);
+
+        if (keyHolder.getKey() == null) {
+            throw new IllegalStateException(
+                    "Unable to create owner");
+        }
+
+        return keyHolder.getKey().longValue();
+    }
+
+    public void insertAuthUser(
+            Long ownerId,
+            String email,
+            String passwordHash) {
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO staffhub_auth_users
+                (
+                    employee_id,
+                    owner_id,
+                    email,
+                    password_hash,
+                    enabled
+                )
+                VALUES (NULL, ?, ?, ?, 1)
+                """,
+                ownerId,
+                email,
+                passwordHash);
     }
 }

@@ -2,31 +2,25 @@ package com.staffhub.model;
 
 import java.time.LocalDateTime;
 
-public class Company {
+public class Owner {
 
     private Long id;
 
-    private String companyCode;
+    private String firstName;
 
-    private String companyName;
+    private String lastName;
 
     private String email;
 
     private String phone;
 
-    private String address;
-
-    private String industry;
-
     private String status;
-
-    private Long ownerId;
 
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
 
-    public Company() {
+    public Owner() {
     }
 
     public Long getId() {
@@ -37,20 +31,20 @@ public class Company {
         this.id = id;
     }
 
-    public String getCompanyCode() {
-        return companyCode;
+    public String getFirstName() {
+        return firstName;
     }
 
-    public void setCompanyCode(String companyCode) {
-        this.companyCode = companyCode;
+    public void setFirstName(String firstName) {
+        this.firstName = firstName;
     }
 
-    public String getCompanyName() {
-        return companyName;
+    public String getLastName() {
+        return lastName;
     }
 
-    public void setCompanyName(String companyName) {
-        this.companyName = companyName;
+    public void setLastName(String lastName) {
+        this.lastName = lastName;
     }
 
     public String getEmail() {
@@ -69,36 +63,12 @@ public class Company {
         this.phone = phone;
     }
 
-    public String getAddress() {
-        return address;
-    }
-
-    public void setAddress(String address) {
-        this.address = address;
-    }
-
-    public String getIndustry() {
-        return industry;
-    }
-
-    public void setIndustry(String industry) {
-        this.industry = industry;
-    }
-
     public String getStatus() {
         return status;
     }
 
     public void setStatus(String status) {
         this.status = status;
-    }
-
-    public Long getOwnerId() {
-        return ownerId;
-    }
-
-    public void setOwnerId(Long ownerId) {
-        this.ownerId = ownerId;
     }
 
     public LocalDateTime getCreatedAt() {

@@ -8,51 +8,44 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
 @Service
-public class AuthUserDetailsService implements UserDetailsService {
+public class AuthUserDetailsService
+        implements UserDetailsService {
 
     private final AuthRepository authRepository;
 
-    public AuthUserDetailsService(AuthRepository authRepository) {
-        this.authRepository = authRepository;
+    public AuthUserDetailsService(
+            AuthRepository authRepository) {
+
+        this.authRepository =
+                authRepository;
     }
 
     @Override
-    public UserDetails loadUserByUsername(String email)
+    public UserDetails loadUserByUsername(
+            String username)
             throws UsernameNotFoundException {
 
         AuthRepository.AuthUserRecord account =
-                authRepository.findByEmail(email);
+                authRepository.findByEmail(
+                        username);
 
         if (account == null) {
+
             throw new UsernameNotFoundException(
-                    "Invalid email or password"
-            );
+                    "User account not found");
         }
 
         if (!account.enabled()) {
+
             throw new UsernameNotFoundException(
-                    "This account is disabled"
-            );
+                    "User account is disabled");
         }
 
-        String role = account.employee().getRole();
-
-        if (role == null || role.isBlank()) {
-            role = "Employee";
-        }
-
-        return User.builder()
-                .username(account.email())
+        return User
+                .withUsername(account.email())
                 .password(account.passwordHash())
-                .roles(normalizeRole(role))
+                .disabled(!account.enabled())
+                .authorities("ROLE_USER")
                 .build();
-    }
-
-    private String normalizeRole(String role) {
-
-        return role
-                .trim()
-                .replaceAll("\\s+", "_")
-                .toUpperCase();
     }
 }

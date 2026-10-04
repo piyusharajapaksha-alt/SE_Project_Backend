@@ -1,6 +1,7 @@
 package com.staffhub.controller;
 
 import com.staffhub.model.Employee;
+import com.staffhub.model.Owner;
 import com.staffhub.repository.AuthRepository;
 import com.staffhub.service.OwnerRegistrationService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -12,8 +13,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
+
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
@@ -22,11 +26,10 @@ import org.springframework.security.web.csrf.CsrfToken;
 
 import org.springframework.web.bind.annotation.*;
 
-import org.springframework.security.crypto.password.PasswordEncoder;
-
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
+
     private final PasswordEncoder passwordEncoder;
 
     private final AuthenticationManager authenticationManager;
@@ -35,24 +38,30 @@ public class AuthController {
 
     private final OwnerRegistrationService ownerRegistrationService;
 
-    private final SecurityContextRepository securityContextRepository = new HttpSessionSecurityContextRepository();
+    private final SecurityContextRepository securityContextRepository =
+            new HttpSessionSecurityContextRepository();
 
     public AuthController(
             AuthenticationManager authenticationManager,
             AuthRepository authRepository,
             OwnerRegistrationService ownerRegistrationService,
             PasswordEncoder passwordEncoder) {
-        this.passwordEncoder = passwordEncoder;
 
-        this.authenticationManager = authenticationManager;
+        this.passwordEncoder =
+                passwordEncoder;
 
-        this.authRepository = authRepository;
+        this.authenticationManager =
+                authenticationManager;
 
-        this.ownerRegistrationService = ownerRegistrationService;
+        this.authRepository =
+                authRepository;
+
+        this.ownerRegistrationService =
+                ownerRegistrationService;
     }
 
     // ==========================================================
-    // CSRF TOKEN
+    // CSRF
     // ==========================================================
 
     @GetMapping("/csrf")
@@ -88,21 +97,27 @@ public class AuthController {
 
         try {
 
-            Authentication authentication = authenticate(
-                    request.email(),
-                    request.password());
+            String email =
+                    request.email()
+                            .trim()
+                            .toLowerCase();
+
+            Authentication authentication =
+                    authenticate(
+                            email,
+                            request.password());
 
             saveAuthentication(
                     authentication,
                     req,
                     res);
 
-            AuthRepository.AuthUserRecord account = authRepository.findByEmail(
-                    request.email()
-                            .trim()
-                            .toLowerCase());
+            AuthRepository.AuthUserRecord account =
+                    authRepository.findByEmail(
+                            email);
 
-            if (account == null) {
+            if (account == null
+                    || !account.enabled()) {
 
                 return unauthorized();
             }
@@ -122,33 +137,38 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<?> register(
-            @RequestBody OwnerRegistrationService.RegisterRequest request,
+            @RequestBody
+            OwnerRegistrationService.RegisterRequest request,
             HttpServletRequest req,
             HttpServletResponse res) {
 
         try {
 
-            OwnerRegistrationService.RegistrationResult result = ownerRegistrationService.register(
-                    request);
+            OwnerRegistrationService.RegistrationResult result =
+                    ownerRegistrationService.register(
+                            request);
 
-            Authentication authentication = authenticate(
-                    result.ownerEmail(),
-                    request.password());
+            Authentication authentication =
+                    authenticate(
+                            result.ownerEmail(),
+                            request.password());
 
             saveAuthentication(
                     authentication,
                     req,
                     res);
 
-            AuthRepository.AuthUserRecord account = authRepository.findByEmail(
-                    result.ownerEmail());
+            AuthRepository.AuthUserRecord account =
+                    authRepository.findByEmail(
+                            result.ownerEmail());
 
             return ResponseEntity
                     .status(HttpStatus.CREATED)
                     .body(
                             toResponse(account));
 
-        } catch (OwnerRegistrationService.RegistrationException ex) {
+        } catch (
+                OwnerRegistrationService.RegistrationException ex) {
 
             return ResponseEntity
                     .badRequest()
@@ -157,6 +177,8 @@ public class AuthController {
                                     ex.getMessage()));
 
         } catch (Exception ex) {
+
+            ex.printStackTrace();
 
             return ResponseEntity
                     .status(
@@ -179,20 +201,23 @@ public class AuthController {
                 || !authentication.isAuthenticated()) {
 
             return ResponseEntity
-                    .status(HttpStatus.UNAUTHORIZED)
+                    .status(
+                            HttpStatus.UNAUTHORIZED)
                     .body(
                             new ErrorResponse(
                                     "Not authenticated"));
         }
 
-        AuthRepository.AuthUserRecord account = authRepository.findByEmail(
-                authentication.getName());
+        AuthRepository.AuthUserRecord account =
+                authRepository.findByEmail(
+                        authentication.getName());
 
         if (account == null
                 || !account.enabled()) {
 
             return ResponseEntity
-                    .status(HttpStatus.UNAUTHORIZED)
+                    .status(
+                            HttpStatus.UNAUTHORIZED)
                     .body(
                             new ErrorResponse(
                                     "Authenticated user no longer exists"));
@@ -211,10 +236,6 @@ public class AuthController {
             @RequestBody ChangePasswordRequest request,
             Authentication authentication) {
 
-        // ------------------------------------------------------
-        // Check authentication
-        // ------------------------------------------------------
-
         if (authentication == null
                 || !authentication.isAuthenticated()) {
 
@@ -224,10 +245,6 @@ public class AuthController {
                             new ErrorResponse(
                                     "You must be logged in to change your password"));
         }
-
-        // ------------------------------------------------------
-        // Validate request
-        // ------------------------------------------------------
 
         if (request.currentPassword() == null
                 || request.currentPassword().isBlank()) {
@@ -259,10 +276,6 @@ public class AuthController {
                                     "Confirm password is required"));
         }
 
-        // ------------------------------------------------------
-        // Password length
-        // ------------------------------------------------------
-
         if (request.newPassword().length() < 8) {
 
             return ResponseEntity
@@ -271,10 +284,6 @@ public class AuthController {
                             new ErrorResponse(
                                     "New password must contain at least 8 characters"));
         }
-
-        // ------------------------------------------------------
-        // Password confirmation
-        // ------------------------------------------------------
 
         if (!request.newPassword()
                 .equals(request.confirmPassword())) {
@@ -286,12 +295,9 @@ public class AuthController {
                                     "New passwords do not match"));
         }
 
-        // ------------------------------------------------------
-        // Find current account
-        // ------------------------------------------------------
-
-        AuthRepository.AuthUserRecord account = authRepository.findByEmail(
-                authentication.getName());
+        AuthRepository.AuthUserRecord account =
+                authRepository.findByEmail(
+                        authentication.getName());
 
         if (account == null
                 || !account.enabled()) {
@@ -303,15 +309,9 @@ public class AuthController {
                                     "User account was not found"));
         }
 
-        // ------------------------------------------------------
-        // Verify current password
-        // ------------------------------------------------------
-
-        boolean currentPasswordCorrect = passwordEncoder.matches(
+        if (!passwordEncoder.matches(
                 request.currentPassword(),
-                account.passwordHash());
-
-        if (!currentPasswordCorrect) {
+                account.passwordHash())) {
 
             return ResponseEntity
                     .badRequest()
@@ -319,10 +319,6 @@ public class AuthController {
                             new ErrorResponse(
                                     "Current password is incorrect"));
         }
-
-        // ------------------------------------------------------
-        // Prevent same password
-        // ------------------------------------------------------
 
         if (passwordEncoder.matches(
                 request.newPassword(),
@@ -335,18 +331,9 @@ public class AuthController {
                                     "New password must be different from the current password"));
         }
 
-        // ------------------------------------------------------
-        // Encode new password
-        // ------------------------------------------------------
-
-        String newPasswordHash = passwordEncoder.encode(
-                request.newPassword());
-
-        // ------------------------------------------------------
-        // Update database
-        // ------------------------------------------------------
-
-        // Add this method to AuthRepository below.
+        String newPasswordHash =
+                passwordEncoder.encode(
+                        request.newPassword());
 
         authRepository.updatePassword(
                 account.authId(),
@@ -367,14 +354,16 @@ public class AuthController {
 
         SecurityContextHolder.clearContext();
 
-        var session = request.getSession(false);
+        var session =
+                request.getSession(false);
 
         if (session != null) {
-
             session.invalidate();
         }
 
-        return ResponseEntity.noContent().build();
+        return ResponseEntity
+                .noContent()
+                .build();
     }
 
     // ==========================================================
@@ -386,14 +375,13 @@ public class AuthController {
             String password) {
 
         return authenticationManager.authenticate(
-
                 new UsernamePasswordAuthenticationToken(
-                        email.trim().toLowerCase(),
+                        email,
                         password));
     }
 
     // ==========================================================
-    // SAVE AUTHENTICATION
+    // SAVE SESSION
     // ==========================================================
 
     private void saveAuthentication(
@@ -401,7 +389,9 @@ public class AuthController {
             HttpServletRequest req,
             HttpServletResponse res) {
 
-        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        SecurityContext context =
+                SecurityContextHolder
+                        .createEmptyContext();
 
         context.setAuthentication(
                 authentication);
@@ -416,43 +406,64 @@ public class AuthController {
     }
 
     // ==========================================================
-    // MAP USER RESPONSE
+    // RESPONSE
     // ==========================================================
 
     private AuthUserResponse toResponse(
             AuthRepository.AuthUserRecord account) {
 
-        Employee e = account.employee();
+        if (account.owner() != null) {
+
+            Owner owner =
+                    account.owner();
+
+            return new AuthUserResponse(
+                    account.authId(),
+                    null,
+                    owner.getId(),
+                    account.email(),
+                    "Owner",
+                    null,
+                    owner.getFirstName(),
+                    owner.getLastName(),
+                    null,
+                    "Company Owner",
+                    owner.getPhone(),
+                    owner.getStatus(),
+                    "OWNER");
+        }
+
+        Employee employee =
+                account.employee();
 
         return new AuthUserResponse(
                 account.authId(),
-                e.getId(),
-                e.getEmail(),
-                e.getRole(),
-                e.getEmployeeNumber(),
-                e.getFirstName(),
-                e.getLastName(),
-                e.getDepartment(),
-                e.getPosition(),
-                e.getPhone(),
-                e.getEmploymentStatus());
+                employee.getId(),
+                null,
+                account.email(),
+                employee.getRole(),
+                employee.getEmployeeNumber(),
+                employee.getFirstName(),
+                employee.getLastName(),
+                employee.getDepartment(),
+                employee.getPosition(),
+                employee.getPhone(),
+                employee.getEmploymentStatus(),
+                "EMPLOYEE");
     }
-
-    // ==========================================================
-    // UNAUTHORIZED
-    // ==========================================================
 
     private ResponseEntity<ErrorResponse> unauthorized() {
 
         return ResponseEntity
-                .status(HttpStatus.UNAUTHORIZED)
+                .status(
+                        HttpStatus.UNAUTHORIZED)
                 .body(
                         new ErrorResponse(
                                 "Invalid email or password"));
     }
 
     // ==========================================================
-    // REQUEST / RESPONSE RECORDS
+    // RECORDS
     // ==========================================================
 
     public record LoginRequest(
@@ -471,6 +482,7 @@ public class AuthController {
     public record AuthUserResponse(
             Long id,
             Long employeeId,
+            Long ownerId,
             String email,
             String role,
             String employeeNumber,
@@ -479,7 +491,8 @@ public class AuthController {
             String department,
             String position,
             String phone,
-            String status) {
+            String status,
+            String accountType) {
     }
 
     public record ChangePasswordRequest(
@@ -491,5 +504,4 @@ public class AuthController {
     public record MessageResponse(
             String message) {
     }
-
 }
