@@ -54,6 +54,25 @@ public class TrainingService {
 
         validateTraining(training);
 
+        /*
+         * Normalize department names before saving.
+         *
+         * Example:
+         *
+         * " HR "
+         * "hr"
+         * "HR"
+         *
+         * become one value:
+         *
+         * "HR"
+         */
+        training.setTrainingFor(
+                normalizeDepartments(
+                        training.getTrainingFor()
+                )
+        );
+
         TrainingProgram created =
                 trainingRepository.create(training);
 
@@ -68,7 +87,7 @@ public class TrainingService {
 
         /*
          * Reload the training so the response contains
-         * the newly created assignment IDs.
+         * the final assignment list.
          */
         return trainingRepository.findById(
                 created.getId()
@@ -112,6 +131,15 @@ public class TrainingService {
             );
         }
 
+        /*
+         * Normalize departments before saving.
+         */
+        training.setTrainingFor(
+                normalizeDepartments(
+                        training.getTrainingFor()
+                )
+        );
+
         TrainingProgram updated =
                 trainingRepository.update(
                         id,
@@ -119,8 +147,15 @@ public class TrainingService {
                 );
 
         /*
-         * Synchronize employee assignments whenever
-         * Training For changes.
+         * Synchronize employee assignments.
+         *
+         * This does two things:
+         *
+         * 1. Removes employees belonging to departments
+         *    that are no longer selected.
+         *
+         * 2. Adds all employees belonging to the
+         *    newly/currently selected departments.
          */
         synchronizeDepartmentAssignments(
                 id,
@@ -214,10 +249,6 @@ public class TrainingService {
                 );
             }
 
-            /*
-             * INSERT ... ON CONFLICT DO NOTHING
-             * prevents duplicate assignments.
-             */
             trainingRepository.assignEmployee(
                     trainingId,
                     normalized
@@ -373,19 +404,22 @@ public class TrainingService {
             List<String> trainingFor
     ) {
 
+        /*
+         * Always normalize before querying the database.
+         */
         List<String> departments =
                 normalizeDepartments(trainingFor);
 
         /*
-         * First remove assignments belonging to
-         * departments that are no longer selected.
+         * Remove assignments belonging to departments
+         * that are no longer selected.
          *
          * Example:
          *
-         * Old:
+         * OLD:
          * IT + HR
          *
-         * New:
+         * NEW:
          * IT
          *
          * HR employees are removed.
@@ -396,8 +430,11 @@ public class TrainingService {
         );
 
         /*
-         * Then get every employee belonging to the
-         * currently selected departments.
+         * Find ALL employees belonging to the selected
+         * departments.
+         *
+         * Repository performs case-insensitive and
+         * whitespace-safe department matching.
          */
         List<String> employeeIds =
                 trainingRepository.findEmployeeNumbersByDepartments(
@@ -405,16 +442,22 @@ public class TrainingService {
                 );
 
         /*
-         * Assign all matching employees.
+         * Assign every matching employee.
          *
-         * Duplicate assignments are automatically
-         * ignored by the database.
+         * The repository already prevents duplicate
+         * training assignments.
          */
         for (String employeeId : employeeIds) {
 
+            if (employeeId == null ||
+                    employeeId.trim().isEmpty()) {
+
+                continue;
+            }
+
             trainingRepository.assignEmployee(
                     trainingId,
-                    employeeId
+                    employeeId.trim()
             );
         }
     }
@@ -428,14 +471,14 @@ public class TrainingService {
             List<String> departments
     ) {
 
+        List<String> normalized =
+                new ArrayList<>();
+
         if (departments == null ||
                 departments.isEmpty()) {
 
-            return new ArrayList<>();
+            return normalized;
         }
-
-        List<String> normalized =
-                new ArrayList<>();
 
         for (String department : departments) {
 
@@ -450,7 +493,31 @@ public class TrainingService {
                 continue;
             }
 
-            if (!normalized.contains(value)) {
+            /*
+             * Keep the first selected spelling for storage,
+             * but compare department names case-insensitively.
+             *
+             * Example:
+             *
+             * HR
+             * hr
+             * HR
+             *
+             * becomes:
+             *
+             * HR
+             */
+            boolean alreadyExists =
+                    normalized.stream()
+                            .anyMatch(
+                                    existing ->
+                                            existing.equalsIgnoreCase(
+                                                    value
+                                            )
+                            );
+
+            if (!alreadyExists) {
+
                 normalized.add(value);
             }
         }

@@ -337,9 +337,7 @@ public class TrainingRepository {
         public List<String> findEmployeeNumbersByDepartments(
                         List<String> departments) {
 
-                if (departments == null ||
-                                departments.isEmpty()) {
-
+                if (departments == null || departments.isEmpty()) {
                         return new ArrayList<>();
                 }
 
@@ -352,7 +350,7 @@ public class TrainingRepository {
                 String sql = """
                                 SELECT employee_number
                                 FROM employees
-                                WHERE department IN (
+                                WHERE LOWER(LTRIM(RTRIM(department))) IN (
                                 """
                                 + placeholders +
                                 """
@@ -363,8 +361,7 @@ public class TrainingRepository {
                 return jdbcTemplate.query(
                                 sql,
                                 departments.toArray(),
-                                (resultSet, rowNumber) -> resultSet.getString(
-                                                "employee_number"));
+                                (resultSet, rowNumber) -> resultSet.getString("employee_number"));
         }
 
         // ============================================================
@@ -375,8 +372,7 @@ public class TrainingRepository {
                         Long trainingId,
                         List<String> departments) {
 
-                if (departments == null ||
-                                departments.isEmpty()) {
+                if (departments == null || departments.isEmpty()) {
 
                         jdbcTemplate.update(
                                         """
@@ -400,7 +396,7 @@ public class TrainingRepository {
                                   AND employee_id NOT IN (
                                       SELECT employee_number
                                       FROM employees
-                                      WHERE department IN (
+                                      WHERE LOWER(LTRIM(RTRIM(department))) IN (
                                 """
                                 + placeholders +
                                 """
