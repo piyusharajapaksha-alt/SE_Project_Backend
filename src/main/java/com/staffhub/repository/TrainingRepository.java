@@ -16,882 +16,1264 @@ import java.util.Map;
 @Repository
 public class TrainingRepository {
 
-        private final JdbcTemplate jdbcTemplate;
+    private final JdbcTemplate jdbcTemplate;
 
-        public TrainingRepository(JdbcTemplate jdbcTemplate) {
-                this.jdbcTemplate = jdbcTemplate;
-        }
+    public TrainingRepository(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
 
-        // ============================================================
-        // GET ALL TRAINING PROGRAMS
-        // ============================================================
+    // ============================================================
+    // GET ALL TRAINING PROGRAMS
+    // ============================================================
 
-        public List<TrainingProgram> findAll() {
+    public List<TrainingProgram> findAll() {
 
-                String sql = """
-                                SELECT
-                                    id,
-                                    title,
-                                    description,
-                                    trainer,
-                                    category,
-                                    start_date,
-                                    end_date,
-                                    location,
-                                    capacity,
-                                    training_for,
-                                    status
-                                FROM training_programs
-                                ORDER BY start_date ASC, id ASC
-                                """;
+        String sql = """
+                SELECT
+                    id,
+                    title,
+                    description,
+                    trainer,
+                    category,
+                    start_date,
+                    end_date,
+                    location,
+                    capacity,
+                    training_for,
+                    status
+                FROM dbo.training_programs
+                ORDER BY start_date ASC, id ASC
+                """;
 
-                return jdbcTemplate.query(
-                                sql,
-                                (resultSet, rowNumber) -> {
+        return jdbcTemplate.query(
+                sql,
+                (resultSet, rowNumber) -> {
 
-                                        TrainingProgram training = mapTraining(resultSet);
+                    TrainingProgram training =
+                            mapTraining(resultSet);
 
-                                        enrichTraining(training);
+                    enrichTraining(training);
 
-                                        return training;
-                                });
-        }
-
-        // ============================================================
-        // GET ONE TRAINING PROGRAM
-        // ============================================================
-
-        public TrainingProgram findById(Long id) {
-
-                String sql = """
-                                SELECT
-                                    id,
-                                    title,
-                                    description,
-                                    trainer,
-                                    category,
-                                    start_date,
-                                    end_date,
-                                    location,
-                                    capacity,
-                                    training_for,
-                                    status
-                                FROM training_programs
-                                WHERE id = ?
-                                """;
-
-                try {
-
-                        TrainingProgram training = jdbcTemplate.queryForObject(
-                                        sql,
-                                        (resultSet, rowNumber) -> mapTraining(resultSet),
-                                        id);
-
-                        if (training != null) {
-                                enrichTraining(training);
-                        }
-
-                        return training;
-
-                } catch (EmptyResultDataAccessException exception) {
-
-                        return null;
+                    return training;
                 }
+        );
+    }
+
+    // ============================================================
+    // GET ONE TRAINING PROGRAM
+    // ============================================================
+
+    public TrainingProgram findById(Long id) {
+
+        if (id == null) {
+            return null;
         }
 
-        // ============================================================
-        // CREATE
-        // ============================================================
+        String sql = """
+                SELECT
+                    id,
+                    title,
+                    description,
+                    trainer,
+                    category,
+                    start_date,
+                    end_date,
+                    location,
+                    capacity,
+                    training_for,
+                    status
+                FROM dbo.training_programs
+                WHERE id = ?
+                """;
 
-        public TrainingProgram create(
-                        TrainingProgram training) {
+        try {
 
-                String sql = """
-                                INSERT INTO training_programs (
-                                    title,
-                                    description,
-                                    trainer,
-                                    category,
-                                    start_date,
-                                    end_date,
-                                    location,
-                                    capacity,
-                                    training_for,
-                                    status
-                                )
-                                OUTPUT INSERTED.id
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                """;
+            TrainingProgram training =
+                    jdbcTemplate.queryForObject(
+                            sql,
+                            (resultSet, rowNumber) ->
+                                    mapTraining(resultSet),
+                            id
+                    );
 
-                String trainingForJson = toTrainingForJson(
-                                training.getTrainingFor());
-
-                Long generatedId = jdbcTemplate.queryForObject(
-                                sql,
-                                Long.class,
-                                training.getTitle(),
-                                training.getDescription(),
-                                training.getTrainer(),
-                                training.getCategory(),
-                                training.getStartDate(),
-                                training.getEndDate(),
-                                training.getLocation(),
-                                training.getCapacity(),
-                                trainingForJson,
-                                training.getStatus());
-
-                if (generatedId == null) {
-
-                        throw new IllegalStateException(
-                                        "Failed to create training program");
-                }
-
-                training.setId(generatedId);
-
+            if (training != null) {
                 enrichTraining(training);
+            }
 
-                return training;
+            return training;
+
+        } catch (EmptyResultDataAccessException exception) {
+
+            return null;
+        }
+    }
+
+    // ============================================================
+    // CREATE
+    // ============================================================
+
+    public TrainingProgram create(
+            TrainingProgram training
+    ) {
+
+        if (training == null) {
+            throw new IllegalArgumentException(
+                    "Training data is required"
+            );
         }
 
-        // ============================================================
-        // UPDATE
-        // ============================================================
+        String sql = """
+                INSERT INTO dbo.training_programs (
+                    title,
+                    description,
+                    trainer,
+                    category,
+                    start_date,
+                    end_date,
+                    location,
+                    capacity,
+                    training_for,
+                    status
+                )
+                OUTPUT INSERTED.id
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """;
 
-        public TrainingProgram update(
-                        Long id,
-                        TrainingProgram training) {
+        String trainingForJson =
+                toTrainingForJson(
+                        training.getTrainingFor()
+                );
 
-                String sql = """
-                                UPDATE training_programs
-                                SET
-                                    title = ?,
-                                    description = ?,
-                                    trainer = ?,
-                                    category = ?,
-                                    start_date = ?,
-                                    end_date = ?,
-                                    location = ?,
-                                    capacity = ?,
-                                    training_for = ?,
-                                    status = ?
-                                WHERE id = ?
-                                """;
+        Long generatedId =
+                jdbcTemplate.queryForObject(
+                        sql,
+                        Long.class,
 
-                String trainingForJson = toTrainingForJson(
-                                training.getTrainingFor());
+                        training.getTitle(),
+                        training.getDescription(),
+                        training.getTrainer(),
+                        training.getCategory(),
+                        training.getStartDate(),
+                        training.getEndDate(),
+                        training.getLocation(),
+                        training.getCapacity(),
+                        trainingForJson,
+                        training.getStatus()
+                );
 
-                int rowsUpdated = jdbcTemplate.update(
-                                sql,
-                                training.getTitle(),
-                                training.getDescription(),
-                                training.getTrainer(),
-                                training.getCategory(),
-                                training.getStartDate(),
-                                training.getEndDate(),
-                                training.getLocation(),
-                                training.getCapacity(),
-                                trainingForJson,
-                                training.getStatus(),
-                                id);
+        if (generatedId == null) {
 
-                if (rowsUpdated == 0) {
-
-                        throw new IllegalArgumentException(
-                                        "Training program not found");
-                }
-
-                training.setId(id);
-
-                enrichTraining(training);
-
-                return training;
+            throw new IllegalStateException(
+                    "Failed to create training program"
+            );
         }
 
-        // ============================================================
-        // DELETE
-        // ============================================================
+        training.setId(generatedId);
 
-        public void delete(Long id) {
+        enrichTraining(training);
 
-                String sql = """
-                                DELETE FROM training_programs
-                                WHERE id = ?
-                                """;
+        return training;
+    }
 
-                int rowsDeleted = jdbcTemplate.update(
-                                sql,
-                                id);
+    // ============================================================
+    // UPDATE
+    // ============================================================
 
-                if (rowsDeleted == 0) {
+    public TrainingProgram update(
+            Long id,
+            TrainingProgram training
+    ) {
 
-                        throw new IllegalArgumentException(
-                                        "Training program not found");
-                }
+        if (id == null) {
+            throw new IllegalArgumentException(
+                    "Training ID is required"
+            );
         }
 
-        // ============================================================
-        // COUNT REGISTRATIONS
-        // ============================================================
-
-        public int countRegistrations(
-                        Long trainingId) {
-
-                String sql = """
-                                SELECT COUNT(*)
-                                FROM training_registrations
-                                WHERE training_id = ?
-                                """;
-
-                Integer count = jdbcTemplate.queryForObject(
-                                sql,
-                                Integer.class,
-                                trainingId);
-
-                return count != null ? count : 0;
+        if (training == null) {
+            throw new IllegalArgumentException(
+                    "Training data is required"
+            );
         }
 
-        // ============================================================
-        // CHECK EMPLOYEE EXISTS
-        // ============================================================
+        String sql = """
+                UPDATE dbo.training_programs
+                SET
+                    title = ?,
+                    description = ?,
+                    trainer = ?,
+                    category = ?,
+                    start_date = ?,
+                    end_date = ?,
+                    location = ?,
+                    capacity = ?,
+                    training_for = ?,
+                    status = ?
+                WHERE id = ?
+                """;
 
-        public boolean employeeExists(
-                        String employeeId) {
+        String trainingForJson =
+                toTrainingForJson(
+                        training.getTrainingFor()
+                );
 
-                String sql = """
-                                SELECT
-                                    CASE
-                                        WHEN EXISTS (
-                                            SELECT 1
-                                            FROM employees
-                                            WHERE employee_number = ?
-                                        )
-                                        THEN 1
-                                        ELSE 0
-                                    END
-                                """;
+        int rowsUpdated =
+                jdbcTemplate.update(
+                        sql,
 
-                Integer exists = jdbcTemplate.queryForObject(
-                                sql,
-                                Integer.class,
-                                employeeId);
+                        training.getTitle(),
+                        training.getDescription(),
+                        training.getTrainer(),
+                        training.getCategory(),
+                        training.getStartDate(),
+                        training.getEndDate(),
+                        training.getLocation(),
+                        training.getCapacity(),
+                        trainingForJson,
+                        training.getStatus(),
+                        id
+                );
 
-                return exists != null && exists == 1;
+        if (rowsUpdated == 0) {
+
+            throw new IllegalArgumentException(
+                    "Training program not found"
+            );
         }
 
-        // ============================================================
-        // ASSIGN EMPLOYEE
-        // ============================================================
+        training.setId(id);
 
-        public void assignEmployee(
-                        Long trainingId,
-                        String employeeId) {
+        enrichTraining(training);
 
-                String sql = """
-                                IF NOT EXISTS (
+        return training;
+    }
+
+    // ============================================================
+    // DELETE
+    // ============================================================
+
+    public void delete(Long id) {
+
+        if (id == null) {
+            throw new IllegalArgumentException(
+                    "Training ID is required"
+            );
+        }
+
+        int rowsDeleted =
+                jdbcTemplate.update(
+                        """
+                        DELETE FROM dbo.training_programs
+                        WHERE id = ?
+                        """,
+                        id
+                );
+
+        if (rowsDeleted == 0) {
+
+            throw new IllegalArgumentException(
+                    "Training program not found"
+            );
+        }
+    }
+
+    // ============================================================
+    // COUNT REGISTRATIONS
+    // ============================================================
+
+    public int countRegistrations(
+            Long trainingId
+    ) {
+
+        Integer count =
+                jdbcTemplate.queryForObject(
+                        """
+                        SELECT COUNT(*)
+                        FROM dbo.training_registrations
+                        WHERE training_id = ?
+                        """,
+                        Integer.class,
+                        trainingId
+                );
+
+        return count != null ? count : 0;
+    }
+
+    // ============================================================
+    // CHECK EMPLOYEE EXISTS
+    // ============================================================
+
+    public boolean employeeExists(
+            String employeeId
+    ) {
+
+        if (employeeId == null ||
+                employeeId.trim().isEmpty()) {
+
+            return false;
+        }
+
+        Integer exists =
+                jdbcTemplate.queryForObject(
+                        """
+                        SELECT
+                            CASE
+                                WHEN EXISTS (
                                     SELECT 1
-                                    FROM training_assignments
+                                    FROM dbo.employees
+                                    WHERE employee_number = ?
+                                )
+                                THEN 1
+                                ELSE 0
+                            END
+                        """,
+                        Integer.class,
+                        employeeId.trim()
+                );
+
+        return exists != null && exists == 1;
+    }
+
+    // ============================================================
+    // CHECK EMPLOYEE EXISTS IN COMPANY
+    // ============================================================
+
+    public boolean employeeExists(
+            String employeeId,
+            Long companyId
+    ) {
+
+        if (employeeId == null ||
+                employeeId.trim().isEmpty() ||
+                companyId == null) {
+
+            return false;
+        }
+
+        Integer exists =
+                jdbcTemplate.queryForObject(
+                        """
+                        SELECT
+                            CASE
+                                WHEN EXISTS (
+                                    SELECT 1
+                                    FROM dbo.employees
+                                    WHERE employee_number = ?
+                                      AND company_id = ?
+                                )
+                                THEN 1
+                                ELSE 0
+                            END
+                        """,
+                        Integer.class,
+                        employeeId.trim(),
+                        companyId
+                );
+
+        return exists != null && exists == 1;
+    }
+
+    // ============================================================
+    // ASSIGN EMPLOYEE
+    // ============================================================
+
+    public void assignEmployee(
+            Long trainingId,
+            String employeeId
+    ) {
+
+        if (trainingId == null ||
+                employeeId == null ||
+                employeeId.trim().isEmpty()) {
+
+            return;
+        }
+
+        String normalizedEmployeeId =
+                employeeId.trim();
+
+        String sql = """
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.training_assignments
+                    WHERE training_id = ?
+                      AND employee_id = ?
+                )
+                BEGIN
+                    INSERT INTO dbo.training_assignments (
+                        training_id,
+                        employee_id
+                    )
+                    VALUES (?, ?)
+                END
+                """;
+
+        jdbcTemplate.update(
+                sql,
+                trainingId,
+                normalizedEmployeeId,
+                trainingId,
+                normalizedEmployeeId
+        );
+    }
+
+    // ============================================================
+    // REMOVE EMPLOYEE ASSIGNMENT
+    // ============================================================
+
+    public void removeEmployeeAssignment(
+            Long trainingId,
+            String employeeId
+    ) {
+
+        if (trainingId == null ||
+                employeeId == null ||
+                employeeId.trim().isEmpty()) {
+
+            return;
+        }
+
+        jdbcTemplate.update(
+                """
+                DELETE FROM dbo.training_assignments
+                WHERE training_id = ?
+                  AND employee_id = ?
+                """,
+                trainingId,
+                employeeId.trim()
+        );
+    }
+
+    // ============================================================
+    // GET EMPLOYEE NUMBERS BY DEPARTMENT
+    //
+    // IMPORTANT:
+    //
+    // The comparison is normalized on BOTH sides:
+    //
+    // department table name
+    // employee department
+    // selected department parameter
+    //
+    // This fixes:
+    //
+    // "HR" vs "hr"
+    // "Finance" vs " finance "
+    // "Human Resources" vs "human resources"
+    // ============================================================
+
+    public List<String> findEmployeeNumbersByDepartments(
+            List<String> departments,
+            Long companyId
+    ) {
+
+        if (departments == null ||
+                departments.isEmpty() ||
+                companyId == null) {
+
+            return new ArrayList<>();
+        }
+
+        List<String> normalizedDepartments =
+                normalizeDepartmentValues(departments);
+
+        if (normalizedDepartments.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        String placeholders =
+                String.join(
+                        ",",
+                        Collections.nCopies(
+                                normalizedDepartments.size(),
+                                "?"
+                        )
+                );
+
+        String sql = """
+                SELECT DISTINCT
+                    e.employee_number
+
+                FROM dbo.employees e
+
+                INNER JOIN dbo.departments d
+                    ON d.company_id = e.company_id
+                   AND LOWER(LTRIM(RTRIM(d.name))) =
+                       LOWER(LTRIM(RTRIM(e.department)))
+
+                WHERE e.company_id = ?
+                  AND d.company_id = ?
+                  AND d.active = 1
+
+                  AND LOWER(LTRIM(RTRIM(d.name))) IN (
+                """
+                + placeholders +
+                """
+                  )
+
+                ORDER BY
+                    e.employee_number
+                """;
+
+        List<Object> parameters =
+                new ArrayList<>();
+
+        parameters.add(companyId);
+        parameters.add(companyId);
+
+        /*
+         * IMPORTANT:
+         *
+         * The SQL normalizes d.name.
+         * The parameters are also normalized
+         * before being supplied.
+         */
+        for (String department :
+                normalizedDepartments) {
+
+            parameters.add(
+                    department
+                            .trim()
+                            .toLowerCase()
+            );
+        }
+
+        return jdbcTemplate.query(
+                sql,
+                parameters.toArray(),
+                (resultSet, rowNumber) ->
+                        resultSet.getString(
+                                "employee_number"
+                        )
+        );
+    }
+
+    // ============================================================
+    // REMOVE ASSIGNMENTS OUTSIDE SELECTED DEPARTMENTS
+    // ============================================================
+
+    public void removeAssignmentsOutsideDepartments(
+            Long trainingId,
+            List<String> departments,
+            Long companyId
+    ) {
+
+        if (trainingId == null) {
+            return;
+        }
+
+        /*
+         * If there are no selected departments,
+         * remove automatic department assignments.
+         */
+        if (departments == null ||
+                departments.isEmpty()) {
+
+            jdbcTemplate.update(
+                    """
+                    DELETE FROM dbo.training_assignments
+                    WHERE training_id = ?
+                    """,
+                    trainingId
+            );
+
+            return;
+        }
+
+        if (companyId == null) {
+            throw new IllegalArgumentException(
+                    "Company ID is required"
+            );
+        }
+
+        List<String> normalizedDepartments =
+                normalizeDepartmentValues(
+                        departments
+                );
+
+        if (normalizedDepartments.isEmpty()) {
+
+            jdbcTemplate.update(
+                    """
+                    DELETE FROM dbo.training_assignments
+                    WHERE training_id = ?
+                    """,
+                    trainingId
+            );
+
+            return;
+        }
+
+        String placeholders =
+                String.join(
+                        ",",
+                        Collections.nCopies(
+                                normalizedDepartments.size(),
+                                "?"
+                        )
+                );
+
+        String sql = """
+                DELETE FROM dbo.training_assignments
+
+                WHERE training_id = ?
+
+                  AND employee_id NOT IN
+                  (
+                      SELECT DISTINCT
+                          e.employee_number
+
+                      FROM dbo.employees e
+
+                      INNER JOIN dbo.departments d
+                          ON d.company_id = e.company_id
+                         AND LOWER(LTRIM(RTRIM(d.name))) =
+                             LOWER(LTRIM(RTRIM(e.department)))
+
+                      WHERE e.company_id = ?
+                        AND d.company_id = ?
+                        AND d.active = 1
+
+                        AND LOWER(LTRIM(RTRIM(d.name))) IN (
+                """
+                + placeholders +
+                """
+                        )
+                  )
+                """;
+
+        List<Object> parameters =
+                new ArrayList<>();
+
+        parameters.add(trainingId);
+        parameters.add(companyId);
+        parameters.add(companyId);
+
+        for (String department :
+                normalizedDepartments) {
+
+            parameters.add(
+                    department
+                            .trim()
+                            .toLowerCase()
+            );
+        }
+
+        jdbcTemplate.update(
+                sql,
+                parameters.toArray()
+        );
+    }
+
+    // ============================================================
+    // GET TRAINING EMPLOYEES
+    // ============================================================
+
+    public List<Map<String, Object>> findTrainingEmployees(
+            Long trainingId
+    ) {
+
+        String sql = """
+                SELECT
+                    e.id,
+                    e.employee_number,
+                    e.first_name,
+                    e.last_name,
+                    e.email,
+                    e.department,
+                    e.position,
+
+                    CASE
+                        WHEN ta.employee_id IS NOT NULL
+                        THEN 'Assigned'
+                        ELSE 'Not Assigned'
+                    END AS assignment_status,
+
+                    CASE
+                        WHEN tr.employee_id IS NOT NULL
+                        THEN 'Registered'
+                        ELSE 'Not Registered'
+                    END AS registration_status
+
+                FROM dbo.employees e
+
+                INNER JOIN dbo.training_assignments ta
+                    ON ta.employee_id = e.employee_number
+                   AND ta.training_id = ?
+
+                LEFT JOIN dbo.training_registrations tr
+                    ON tr.employee_id = e.employee_number
+                   AND tr.training_id = ?
+
+                ORDER BY
+                    e.department ASC,
+                    e.first_name ASC,
+                    e.last_name ASC
+                """;
+
+        return jdbcTemplate.queryForList(
+                sql,
+                trainingId,
+                trainingId
+        );
+    }
+
+    // ============================================================
+    // REGISTER EMPLOYEE
+    // ============================================================
+
+    public void registerEmployee(
+            Long trainingId,
+            String employeeId
+    ) {
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO dbo.training_registrations (
+                    training_id,
+                    employee_id
+                )
+                VALUES (?, ?)
+                """,
+                trainingId,
+                employeeId
+        );
+    }
+
+    // ============================================================
+    // CHECK EMPLOYEE REGISTRATION
+    // ============================================================
+
+    public boolean isEmployeeRegistered(
+            Long trainingId,
+            String employeeId
+    ) {
+
+        Integer exists =
+                jdbcTemplate.queryForObject(
+                        """
+                        SELECT
+                            CASE
+                                WHEN EXISTS (
+                                    SELECT 1
+                                    FROM dbo.training_registrations
                                     WHERE training_id = ?
                                       AND employee_id = ?
                                 )
-                                BEGIN
-                                    INSERT INTO training_assignments (
-                                        training_id,
-                                        employee_id
-                                    )
-                                    VALUES (?, ?)
-                                END
-                                """;
+                                THEN 1
+                                ELSE 0
+                            END
+                        """,
+                        Integer.class,
+                        trainingId,
+                        employeeId
+                );
 
-                jdbcTemplate.update(
-                                sql,
-                                trainingId,
-                                employeeId,
-                                trainingId,
-                                employeeId);
+        return exists != null && exists == 1;
+    }
+
+    // ============================================================
+    // UNREGISTER EMPLOYEE
+    // ============================================================
+
+    public void unregisterEmployee(
+            Long trainingId,
+            String employeeId
+    ) {
+
+        jdbcTemplate.update(
+                """
+                DELETE FROM dbo.training_registrations
+                WHERE training_id = ?
+                  AND employee_id = ?
+                """,
+                trainingId,
+                employeeId
+        );
+    }
+
+    // ============================================================
+    // ENRICH TRAINING DATA
+    // ============================================================
+
+    private void enrichTraining(
+            TrainingProgram training
+    ) {
+
+        if (training == null ||
+                training.getId() == null) {
+
+            return;
         }
 
-        // ============================================================
-        // REMOVE EMPLOYEE ASSIGNMENT
-        // ============================================================
+        Long trainingId =
+                training.getId();
 
-        public void removeEmployeeAssignment(
-                        Long trainingId,
-                        String employeeId) {
+        // --------------------------------------------------------
+        // Assigned employees
+        // --------------------------------------------------------
 
-                String sql = """
-                                DELETE FROM training_assignments
-                                WHERE training_id = ?
-                                  AND employee_id = ?
-                                """;
+        training.setAssignedEmployeeIds(
+                jdbcTemplate.query(
+                        """
+                        SELECT employee_id
+                        FROM dbo.training_assignments
+                        WHERE training_id = ?
+                        ORDER BY employee_id
+                        """,
 
-                jdbcTemplate.update(
-                                sql,
-                                trainingId,
-                                employeeId);
+                        (rs, rowNum) ->
+                                rs.getString(
+                                        "employee_id"
+                                ),
+
+                        trainingId
+                )
+        );
+
+        // --------------------------------------------------------
+        // Registered employees
+        // --------------------------------------------------------
+
+        training.setRegisteredEmployeeIds(
+                jdbcTemplate.query(
+                        """
+                        SELECT employee_id
+                        FROM dbo.training_registrations
+                        WHERE training_id = ?
+                        ORDER BY employee_id
+                        """,
+
+                        (rs, rowNum) ->
+                                rs.getString(
+                                        "employee_id"
+                                ),
+
+                        trainingId
+                )
+        );
+
+        // --------------------------------------------------------
+        // Attendance
+        // --------------------------------------------------------
+
+        Map<String, String> attendance =
+                new HashMap<>();
+
+        try {
+
+            List<Map<String, Object>>
+                    attendanceRows =
+                    jdbcTemplate.queryForList(
+                            """
+                            SELECT
+                                employee_id,
+                                status
+                            FROM dbo.training_attendance
+                            WHERE training_id = ?
+                            """,
+                            trainingId
+                    );
+
+            for (
+                    Map<String, Object> row :
+                    attendanceRows
+            ) {
+
+                Object employeeId =
+                        row.get("employee_id");
+
+                Object status =
+                        row.get("status");
+
+                if (employeeId != null) {
+
+                    attendance.put(
+                            employeeId.toString(),
+                            status != null
+                                    ? status.toString()
+                                    : null
+                    );
+                }
+            }
+
+        } catch (Exception ignored) {
+
+            /*
+             * Attendance is optional enrichment.
+             *
+             * Do not fail the complete training
+             * response if the attendance table is
+             * unavailable or has a schema difference.
+             */
         }
 
-        // ============================================================
-        // GET EMPLOYEE NUMBERS BY DEPARTMENT
-        // ============================================================
+        training.setAttendance(
+                attendance
+        );
 
-        public List<String> findEmployeeNumbersByDepartments(
-                        List<String> departments,
-                        Long companyId) {
+        // --------------------------------------------------------
+        // Completion
+        // --------------------------------------------------------
 
-                if (departments == null ||
-                                departments.isEmpty()) {
+        Map<String, String> completion =
+                new HashMap<>();
 
-                        return new ArrayList<>();
+        try {
+
+            List<Map<String, Object>>
+                    completionRows =
+                    jdbcTemplate.queryForList(
+                            """
+                            SELECT
+                                employee_id,
+                                status
+                            FROM dbo.training_completion
+                            WHERE training_id = ?
+                            """,
+                            trainingId
+                    );
+
+            for (
+                    Map<String, Object> row :
+                    completionRows
+            ) {
+
+                Object employeeId =
+                        row.get("employee_id");
+
+                Object status =
+                        row.get("status");
+
+                if (employeeId != null) {
+
+                    completion.put(
+                            employeeId.toString(),
+                            status != null
+                                    ? status.toString()
+                                    : null
+                    );
                 }
+            }
 
-                String placeholders = String.join(
-                                ",",
-                                Collections.nCopies(
-                                                departments.size(),
-                                                "?"));
+        } catch (Exception ignored) {
 
-                String sql = """
-                                SELECT DISTINCT
-                                    e.employee_number
-
-                                FROM dbo.employees e
-
-                                INNER JOIN dbo.departments d
-                                    ON d.company_id = e.company_id
-                                   AND LOWER(LTRIM(RTRIM(d.name))) =
-                                       LOWER(LTRIM(RTRIM(e.department)))
-
-                                WHERE e.company_id = ?
-                                  AND d.company_id = ?
-                                  AND d.active = 1
-
-                                  AND LOWER(LTRIM(RTRIM(d.name))) IN (
-                                """
-                                + placeholders +
-                                """
-                                                  )
-
-                                                ORDER BY
-                                                    e.employee_number
-                                                """;
-
-                List<Object> parameters = new ArrayList<>();
-
-                parameters.add(companyId);
-                parameters.add(companyId);
-                parameters.addAll(departments);
-
-                return jdbcTemplate.query(
-                                sql,
-                                parameters.toArray(),
-                                (resultSet, rowNumber) -> resultSet.getString(
-                                                "employee_number"));
-        }departments.toArray(),(resultSet,rowNumber)->resultSet.getString("employee_number"));
-
+            /*
+             * Completion is optional enrichment.
+             */
         }
 
-        // ============================================================
-        // REMOVE ASSIGNMENTS OUTSIDE SELECTED DEPARTMENTS
-        // ============================================================
+        training.setCompletion(
+                completion
+        );
+    }
 
-        public void removeAssignmentsOutsideDepartments(
-                        Long trainingId,
-                        List<String> departments,
-                        Long companyId) {
+    // ============================================================
+    // MAP DATABASE ROW
+    // ============================================================
 
-                if (departments == null ||
-                                departments.isEmpty()) {
+    private TrainingProgram mapTraining(
+            ResultSet resultSet
+    ) throws SQLException {
 
-                        jdbcTemplate.update(
-                                        """
-                                                        DELETE FROM training_assignments
-                                                        WHERE training_id = ?
-                                                        """,
-                                        trainingId);
+        TrainingProgram training =
+                new TrainingProgram();
 
-                        return;
-                }
+        training.setId(
+                resultSet.getLong("id")
+        );
 
-                String placeholders = String.join(
-                                ",",
-                                Collections.nCopies(
-                                                departments.size(),
-                                                "?"));
+        training.setTitle(
+                resultSet.getString("title")
+        );
 
-                String sql = """
-                                DELETE FROM training_assignments
+        training.setDescription(
+                resultSet.getString("description")
+        );
 
-                                WHERE training_id = ?
+        training.setTrainer(
+                resultSet.getString("trainer")
+        );
 
-                                  AND employee_id NOT IN
-                                  (
-                                      SELECT DISTINCT
-                                          e.employee_number
+        training.setCategory(
+                resultSet.getString("category")
+        );
 
-                                      FROM dbo.employees e
+        if (
+                resultSet.getDate("start_date")
+                        != null
+        ) {
 
-                                      INNER JOIN dbo.departments d
-                                          ON d.company_id = e.company_id
-                                         AND LOWER(LTRIM(RTRIM(d.name))) =
-                                             LOWER(LTRIM(RTRIM(e.department)))
-
-                                      WHERE e.company_id = ?
-                                        AND d.company_id = ?
-                                        AND d.active = 1
-
-                                        AND LOWER(LTRIM(RTRIM(d.name))) IN (
-                                """
-                                + placeholders +
-                                """
-                                                        )
-                                                  )
-                                                """;
-
-                List<Object> parameters = new ArrayList<>();
-
-                parameters.add(trainingId);
-                parameters.add(companyId);
-                parameters.add(companyId);
-                parameters.addAll(departments);
-
-                jdbcTemplate.update(
-                                sql,
-                                parameters.toArray());
+            training.setStartDate(
+                    resultSet
+                            .getDate("start_date")
+                            .toLocalDate()
+            );
         }
 
-        // ============================================================
-        // GET TRAINING EMPLOYEES
-        // ============================================================
+        if (
+                resultSet.getDate("end_date")
+                        != null
+        ) {
 
-        public List<Map<String, Object>> findTrainingEmployees(
-                        Long trainingId) {
-
-                String sql = """
-                                SELECT
-                                    e.id,
-                                    e.employee_number,
-                                    e.first_name,
-                                    e.last_name,
-                                    e.email,
-                                    e.department,
-                                    e.position,
-
-                                    CASE
-                                        WHEN ta.employee_id IS NOT NULL
-                                        THEN 'Assigned'
-                                        ELSE 'Not Assigned'
-                                    END AS assignment_status,
-
-                                    CASE
-                                        WHEN tr.employee_id IS NOT NULL
-                                        THEN 'Registered'
-                                        ELSE 'Not Registered'
-                                    END AS registration_status
-
-                                FROM employees e
-
-                                LEFT JOIN training_assignments ta
-                                    ON ta.employee_id = e.employee_number
-                                   AND ta.training_id = ?
-
-                                LEFT JOIN training_registrations tr
-                                    ON tr.employee_id = e.employee_number
-                                   AND tr.training_id = ?
-
-                                WHERE ta.employee_id IS NOT NULL
-
-                                ORDER BY
-                                    e.department ASC,
-                                    e.first_name ASC,
-                                    e.last_name ASC
-                                """;
-
-                return jdbcTemplate.queryForList(
-                                sql,
-                                trainingId,
-                                trainingId);
+            training.setEndDate(
+                    resultSet
+                            .getDate("end_date")
+                            .toLocalDate()
+            );
         }
 
-        // ============================================================
-        // REGISTER EMPLOYEE
-        // ============================================================
+        training.setLocation(
+                resultSet.getString("location")
+        );
 
-        public void registerEmployee(
-                        Long trainingId,
-                        String employeeId) {
+        training.setCapacity(
+                resultSet.getInt("capacity")
+        );
 
-                String sql = """
-                                INSERT INTO training_registrations (
-                                    training_id,
-                                    employee_id
-                                )
-                                VALUES (?, ?)
-                                """;
+        training.setTrainingFor(
+                getTrainingFor(
+                        resultSet.getString(
+                                "training_for"
+                        )
+                )
+        );
 
-                jdbcTemplate.update(
-                                sql,
-                                trainingId,
-                                employeeId);
+        training.setStatus(
+                resultSet.getString("status")
+        );
+
+        return training;
+    }
+
+    // ============================================================
+    // SQL SERVER JSON -> LIST
+    // ============================================================
+
+    private List<String> getTrainingFor(
+            String trainingForJson
+    ) {
+
+        List<String> result =
+                new ArrayList<>();
+
+        if (
+                trainingForJson == null ||
+                trainingForJson.isBlank()
+        ) {
+
+            return result;
         }
 
-        // ============================================================
-        // CHECK EMPLOYEE REGISTRATION
-        // ============================================================
+        String json =
+                trainingForJson.trim();
 
-        public boolean isEmployeeRegistered(
-                        Long trainingId,
-                        String employeeId) {
+        /*
+         * Expected:
+         *
+         * ["Finance"]
+         *
+         * or:
+         *
+         * ["Finance","Human Resources"]
+         */
 
-                String sql = """
-                                SELECT
-                                    CASE
-                                        WHEN EXISTS (
-                                            SELECT 1
-                                            FROM training_registrations
-                                            WHERE training_id = ?
-                                              AND employee_id = ?
-                                        )
-                                        THEN 1
-                                        ELSE 0
-                                    END
-                                """;
+        if (
+                json.startsWith("[") &&
+                json.endsWith("]")
+        ) {
 
-                Integer exists = jdbcTemplate.queryForObject(
-                                sql,
-                                Integer.class,
-                                trainingId,
-                                employeeId);
-
-                return exists != null && exists == 1;
+            json = json.substring(
+                    1,
+                    json.length() - 1
+            ).trim();
         }
 
-        // ============================================================
-        // UNREGISTER EMPLOYEE
-        // ============================================================
-
-        public void unregisterEmployee(
-                        Long trainingId,
-                        String employeeId) {
-
-                String sql = """
-                                DELETE FROM training_registrations
-                                WHERE training_id = ?
-                                  AND employee_id = ?
-                                """;
-
-                jdbcTemplate.update(
-                                sql,
-                                trainingId,
-                                employeeId);
+        if (json.isBlank()) {
+            return result;
         }
 
-        // ============================================================
-        // ENRICH TRAINING DATA
-        // ============================================================
+        StringBuilder current =
+                new StringBuilder();
 
-        private void enrichTraining(
-                        TrainingProgram training) {
+        boolean insideQuotes = false;
+        boolean escaped = false;
 
-                Long trainingId = training.getId();
+        for (int i = 0; i < json.length(); i++) {
 
-                // --------------------------------------------------------
-                // Assigned employees
-                // --------------------------------------------------------
+            char character =
+                    json.charAt(i);
 
-                training.setAssignedEmployeeIds(
-                                jdbcTemplate.query(
-                                                """
-                                                                SELECT employee_id
-                                                                FROM training_assignments
-                                                                WHERE training_id = ?
-                                                                ORDER BY employee_id
-                                                                """,
+            if (escaped) {
 
-                                                (rs, rowNum) -> rs.getString(
-                                                                "employee_id"),
+                current.append(character);
+                escaped = false;
+                continue;
+            }
 
-                                                trainingId));
+            if (character == '\\') {
 
-                // --------------------------------------------------------
-                // Registered employees
-                // --------------------------------------------------------
+                current.append(character);
+                escaped = true;
+                continue;
+            }
 
-                training.setRegisteredEmployeeIds(
-                                jdbcTemplate.query(
-                                                """
-                                                                SELECT employee_id
-                                                                FROM training_registrations
-                                                                WHERE training_id = ?
-                                                                ORDER BY employee_id
-                                                                """,
+            if (character == '"') {
 
-                                                (rs, rowNum) -> rs.getString(
-                                                                "employee_id"),
+                insideQuotes = !insideQuotes;
+                continue;
+            }
 
-                                                trainingId));
+            if (
+                    character == ',' &&
+                    !insideQuotes
+            ) {
 
-                // --------------------------------------------------------
-                // Attendance
-                // --------------------------------------------------------
+                addParsedDepartment(
+                        result,
+                        current.toString()
+                );
 
-                Map<String, String> attendance = new HashMap<>();
+                current.setLength(0);
 
-                try {
+                continue;
+            }
 
-                        List<Map<String, Object>> attendanceRows = jdbcTemplate.queryForList(
-                                        """
-                                                        SELECT
-                                                            employee_id,
-                                                            status
-                                                        FROM training_attendance
-                                                        WHERE training_id = ?
-                                                        """,
-                                        trainingId);
-
-                        for (Map<String, Object> row : attendanceRows) {
-
-                                Object employeeId = row.get("employee_id");
-
-                                Object status = row.get("status");
-
-                                if (employeeId != null) {
-
-                                        attendance.put(
-                                                        employeeId.toString(),
-                                                        status != null
-                                                                        ? status.toString()
-                                                                        : null);
-                                }
-                        }
-
-                } catch (Exception ignored) {
-
-                        /*
-                         * Do not stop the complete training response
-                         * if attendance data cannot be loaded.
-                         */
-                }
-
-                training.setAttendance(attendance);
-
-                // --------------------------------------------------------
-                // Completion
-                // --------------------------------------------------------
-
-                Map<String, String> completion = new HashMap<>();
-
-                try {
-
-                        List<Map<String, Object>> completionRows = jdbcTemplate.queryForList(
-                                        """
-                                                        SELECT
-                                                            employee_id,
-                                                            status
-                                                        FROM training_completion
-                                                        WHERE training_id = ?
-                                                        """,
-                                        trainingId);
-
-                        for (Map<String, Object> row : completionRows) {
-
-                                Object employeeId = row.get("employee_id");
-
-                                Object status = row.get("status");
-
-                                if (employeeId != null) {
-
-                                        completion.put(
-                                                        employeeId.toString(),
-                                                        status != null
-                                                                        ? status.toString()
-                                                                        : null);
-                                }
-                        }
-
-                } catch (Exception ignored) {
-
-                        /*
-                         * Do not stop the complete training response
-                         * if completion data cannot be loaded.
-                         */
-                }
-
-                training.setCompletion(completion);
+            current.append(character);
         }
 
-        // ============================================================
-        // MAP DATABASE ROW
-        // ============================================================
+        addParsedDepartment(
+                result,
+                current.toString()
+        );
 
-        private TrainingProgram mapTraining(
-                        ResultSet resultSet) throws SQLException {
+        return result;
+    }
 
-                TrainingProgram training = new TrainingProgram();
+    // ============================================================
+    // ADD PARSED DEPARTMENT
+    // ============================================================
 
-                training.setId(
-                                resultSet.getLong("id"));
+    private void addParsedDepartment(
+            List<String> result,
+            String value
+    ) {
 
-                training.setTitle(
-                                resultSet.getString("title"));
-
-                training.setDescription(
-                                resultSet.getString("description"));
-
-                training.setTrainer(
-                                resultSet.getString("trainer"));
-
-                training.setCategory(
-                                resultSet.getString("category"));
-
-                if (resultSet.getDate("start_date") != null) {
-
-                        training.setStartDate(
-                                        resultSet
-                                                        .getDate("start_date")
-                                                        .toLocalDate());
-                }
-
-                if (resultSet.getDate("end_date") != null) {
-
-                        training.setEndDate(
-                                        resultSet
-                                                        .getDate("end_date")
-                                                        .toLocalDate());
-                }
-
-                training.setLocation(
-                                resultSet.getString("location"));
-
-                training.setCapacity(
-                                resultSet.getInt("capacity"));
-
-                training.setTrainingFor(
-                                getTrainingFor(
-                                                resultSet.getString(
-                                                                "training_for")));
-
-                training.setStatus(
-                                resultSet.getString("status"));
-
-                return training;
+        if (value == null) {
+            return;
         }
 
-        // ============================================================
-        // CONVERT SQL SERVER JSON -> List<String>
-        // ============================================================
+        String cleaned =
+                value.trim()
+                        .replace("\\\"", "\"")
+                        .replace("\\\\", "\\");
 
-        private List<String> getTrainingFor(
-                        String trainingForJson) {
+        if (
+                !cleaned.isBlank() &&
+                !result.contains(cleaned)
+        ) {
 
-                List<String> result = new ArrayList<>();
+            result.add(cleaned);
+        }
+    }
 
-                if (trainingForJson == null ||
-                                trainingForJson.isBlank()) {
+    // ============================================================
+    // LIST -> SQL SERVER JSON
+    // ============================================================
 
-                        return result;
-                }
+    private String toTrainingForJson(
+            List<String> trainingFor
+    ) {
 
-                String json = trainingForJson.trim();
+        if (
+                trainingFor == null ||
+                trainingFor.isEmpty()
+        ) {
 
-                /*
-                 * Expected SQL Server value:
-                 *
-                 * ["Engineering"]
-                 *
-                 * or
-                 *
-                 * ["Engineering","Human Resources","IT"]
-                 */
-
-                if (json.startsWith("[") &&
-                                json.endsWith("]")) {
-
-                        json = json.substring(
-                                        1,
-                                        json.length() - 1).trim();
-                }
-
-                if (json.isBlank()) {
-                        return result;
-                }
-
-                /*
-                 * Split the simple JSON array.
-                 *
-                 * Department names in StaffHub do not contain
-                 * commas, so this is sufficient for the current
-                 * database structure.
-                 */
-
-                String[] values = json.split(",");
-
-                for (String value : values) {
-
-                        String cleaned = value.trim();
-
-                        if (cleaned.startsWith("\"")) {
-
-                                cleaned = cleaned.substring(1);
-                        }
-
-                        if (cleaned.endsWith("\"")) {
-
-                                cleaned = cleaned.substring(
-                                                0,
-                                                cleaned.length() - 1);
-                        }
-
-                        cleaned = cleaned
-                                        .replace("\\\"", "\"")
-                                        .replace("\\\\", "\\");
-
-                        if (!cleaned.isBlank()) {
-
-                                result.add(cleaned);
-                        }
-                }
-
-                return result;
+            return "[]";
         }
 
-        // ============================================================
-        // CONVERT List<String> -> SQL SERVER JSON
-        // ============================================================
+        StringBuilder json =
+                new StringBuilder("[");
 
-        private String toTrainingForJson(
-                        List<String> trainingFor) {
+        boolean first = true;
 
-                if (trainingFor == null ||
-                                trainingFor.isEmpty()) {
+        for (String department :
+                trainingFor) {
 
-                        return "[]";
-                }
+            if (
+                    department == null ||
+                    department.trim().isEmpty()
+            ) {
+                continue;
+            }
 
-                StringBuilder json = new StringBuilder("[");
+            if (!first) {
+                json.append(",");
+            }
 
-                for (int i = 0; i < trainingFor.size(); i++) {
+            String escaped =
+                    department
+                            .trim()
+                            .replace("\\", "\\\\")
+                            .replace("\"", "\\\"");
 
-                        if (i > 0) {
-                                json.append(",");
-                        }
+            json.append("\"")
+                    .append(escaped)
+                    .append("\"");
 
-                        String department = trainingFor.get(i);
-
-                        if (department == null) {
-                                department = "";
-                        }
-
-                        String escaped = department
-                                        .replace("\\", "\\\\")
-                                        .replace("\"", "\\\"");
-
-                        json.append("\"")
-                                        .append(escaped)
-                                        .append("\"");
-                }
-
-                json.append("]");
-
-                return json.toString();
+            first = false;
         }
+
+        json.append("]");
+
+        return json.toString();
+    }
+
+    // ============================================================
+    // NORMALIZE DEPARTMENT VALUES
+    // ============================================================
+
+    private List<String> normalizeDepartmentValues(
+            List<String> departments
+    ) {
+
+        List<String> result =
+                new ArrayList<>();
+
+        if (departments == null) {
+            return result;
+        }
+
+        for (String department :
+                departments) {
+
+            if (
+                    department == null ||
+                    department.trim().isEmpty()
+            ) {
+                continue;
+            }
+
+            String normalized =
+                    department.trim();
+
+            boolean exists =
+                    result.stream()
+                            .anyMatch(
+                                    existing ->
+                                            existing
+                                                    .equalsIgnoreCase(
+                                                            normalized
+                                                    )
+                            );
+
+            if (!exists) {
+                result.add(normalized);
+            }
+        }
+
+        return result;
+    }
 }
+
