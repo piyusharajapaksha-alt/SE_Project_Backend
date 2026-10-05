@@ -14,8 +14,7 @@ public class DepartmentRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
-    public DepartmentRepository(
-            JdbcTemplate jdbcTemplate) {
+    public DepartmentRepository(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -23,8 +22,7 @@ public class DepartmentRepository {
     // GET ACTIVE DEPARTMENTS FOR CURRENT COMPANY
     // ==========================================================
 
-    public List<Department> findAll(
-            Long companyId) {
+    public List<Department> findAll(Long companyId) {
 
         String sql = """
                 SELECT
@@ -45,20 +43,25 @@ public class DepartmentRepository {
                     Department department = new Department();
 
                     department.setId(
-                            rs.getLong("id"));
+                            rs.getLong("id")
+                    );
 
                     department.setCompanyId(
-                            rs.getLong("company_id"));
+                            rs.getLong("company_id")
+                    );
 
                     department.setName(
-                            rs.getString("name"));
+                            rs.getString("name")
+                    );
 
                     department.setActive(
-                            rs.getBoolean("active"));
+                            rs.getBoolean("active")
+                    );
 
                     return department;
                 },
-                companyId);
+                companyId
+        );
     }
 
     // ==========================================================
@@ -67,10 +70,10 @@ public class DepartmentRepository {
 
     public String findCanonicalName(
             String name,
-            Long companyId) {
+            Long companyId
+    ) {
 
-        if (name == null ||
-                name.trim().isEmpty()) {
+        if (name == null || name.trim().isEmpty()) {
             return null;
         }
 
@@ -87,7 +90,8 @@ public class DepartmentRepository {
                             """,
                     String.class,
                     companyId,
-                    name.trim());
+                    name.trim()
+            );
 
         } catch (EmptyResultDataAccessException exception) {
 
@@ -96,42 +100,48 @@ public class DepartmentRepository {
     }
 
     // ==========================================================
-    // FIND MULTIPLE CANONICAL NAMES
+    // FIND MULTIPLE CANONICAL DEPARTMENT NAMES
     // ==========================================================
 
     public List<String> findCanonicalNames(
             List<String> names,
-            Long companyId) {
+            Long companyId
+    ) {
 
         List<String> result = new ArrayList<>();
 
-        if (names == null ||
-                names.isEmpty()) {
+        if (names == null || names.isEmpty()) {
             return result;
         }
 
         for (String name : names) {
 
-            if (name == null ||
-                    name.trim().isEmpty()) {
+            if (name == null || name.trim().isEmpty()) {
                 continue;
             }
 
-            String canonical = findCanonicalName(
-                    name,
-                    companyId);
+            String canonical =
+                    findCanonicalName(
+                            name,
+                            companyId
+                    );
 
             if (canonical == null) {
 
                 throw new IllegalArgumentException(
                         "Department does not exist in the current company: "
-                                + name.trim());
+                                + name.trim()
+                );
             }
 
-            boolean duplicate = result.stream()
-                    .anyMatch(
-                            existing -> existing.equalsIgnoreCase(
-                                    canonical));
+            boolean duplicate =
+                    result.stream()
+                            .anyMatch(
+                                    existing ->
+                                            existing.equalsIgnoreCase(
+                                                    canonical
+                                            )
+                            );
 
             if (!duplicate) {
                 result.add(canonical);
@@ -143,83 +153,139 @@ public class DepartmentRepository {
 
     // ==========================================================
     // CREATE DEPARTMENT
+    //
+    // Always creates the department with active = 1.
+    //
+    // A deleted department is completely removed from the
+    // database, so it can be created again normally.
     // ==========================================================
 
-    public Department create(String name, Long companyId) {
+    public Department create(
+            String name,
+            Long companyId
+    ) {
 
         String cleanName = name.trim();
 
-        Integer count = jdbcTemplate.queryForObject(
-                """
-                        SELECT COUNT(*)
-                        FROM dbo.departments
-                        WHERE company_id = ?
-                          AND LOWER(LTRIM(RTRIM(name))) = LOWER(LTRIM(RTRIM(?)))
-                        """,
-                Integer.class,
-                companyId,
-                cleanName);
+        // Check for an existing department in this company.
+        // Do NOT filter by active here because we use hard delete.
+        Integer count =
+                jdbcTemplate.queryForObject(
+                        """
+                                SELECT COUNT(*)
+                                FROM dbo.departments
+                                WHERE company_id = ?
+                                  AND LOWER(LTRIM(RTRIM(name))) =
+                                      LOWER(LTRIM(RTRIM(?)))
+                                """,
+                        Integer.class,
+                        companyId,
+                        cleanName
+                );
 
         if (count != null && count > 0) {
+
             throw new IllegalArgumentException(
-                    "Department already exists: " + cleanName);
+                    "Department already exists: " + cleanName
+            );
         }
 
-        Long id = jdbcTemplate.queryForObject(
-                """
-                        INSERT INTO dbo.departments
-                            (company_id, name, active)
-                        OUTPUT INSERTED.id
-                        VALUES (?, ?, 1)
-                        """,
-                Long.class,
-                companyId,
-                cleanName);
+        Long id =
+                jdbcTemplate.queryForObject(
+                        """
+                                INSERT INTO dbo.departments
+                                    (
+                                        company_id,
+                                        name,
+                                        active
+                                    )
+                                OUTPUT INSERTED.id
+                                VALUES (?, ?, 1)
+                                """,
+                        Long.class,
+                        companyId,
+                        cleanName
+                );
 
-        return findById(id, companyId);
+        if (id == null) {
+
+            throw new IllegalStateException(
+                    "Department was created but no ID was returned."
+            );
+        }
+
+        Department department =
+                findById(
+                        id,
+                        companyId
+                );
+
+        if (department == null) {
+
+            throw new IllegalStateException(
+                    "Department was created but could not be loaded."
+            );
+        }
+
+        return department;
     }
 
     // ==========================================================
-    // CHECK EMPLOYEE USAGE
+    // COUNT EMPLOYEES USING DEPARTMENT
+    //
+    // Employee department is currently stored as a text value,
+    // so we prevent deletion while employees still reference it.
     // ==========================================================
 
     public int countEmployeesUsingDepartment(
             String departmentName,
-            Long companyId) {
+            Long companyId
+    ) {
 
-        Integer count = jdbcTemplate.queryForObject(
-                """
-                        SELECT COUNT(*)
-                        FROM dbo.employees
-                        WHERE company_id = ?
-                          AND LOWER(LTRIM(RTRIM(department))) =
-                              LOWER(LTRIM(RTRIM(?)))
-                        """,
-                Integer.class,
-                companyId,
-                departmentName);
+        Integer count =
+                jdbcTemplate.queryForObject(
+                        """
+                                SELECT COUNT(*)
+                                FROM dbo.employees
+                                WHERE company_id = ?
+                                  AND LOWER(LTRIM(RTRIM(department))) =
+                                      LOWER(LTRIM(RTRIM(?)))
+                                """,
+                        Integer.class,
+                        companyId,
+                        departmentName
+                );
 
         return count == null ? 0 : count;
     }
 
     // ==========================================================
-    // DELETE DEPARTMENT
+    // HARD DELETE DEPARTMENT
     //
-    // We soft-delete it by setting active = 0.
+    // IMPORTANT:
+    // This permanently removes the row.
     //
-    // This is safer because employee records may still contain
-    // the department name.
+    // It does NOT:
+    // UPDATE active = 0
+    //
+    // After deletion, creating the same department again will
+    // create a new row with active = 1.
     // ==========================================================
 
-    public void delete(Long id, Long companyId) {
-        jdbcTemplate.update(
+    public int delete(
+            Long id,
+            Long companyId
+    ) {
+
+        return jdbcTemplate.update(
                 """
                         DELETE FROM dbo.departments
                         WHERE id = ?
                           AND company_id = ?
                         """,
                 id,
-                companyId);
+                companyId
+        );
     }
 
     // ==========================================================
@@ -228,7 +294,8 @@ public class DepartmentRepository {
 
     public Department findById(
             Long id,
-            Long companyId) {
+            Long companyId
+    ) {
 
         try {
 
@@ -245,24 +312,30 @@ public class DepartmentRepository {
                             """,
                     (rs, rowNum) -> {
 
-                        Department department = new Department();
+                        Department department =
+                                new Department();
 
                         department.setId(
-                                rs.getLong("id"));
+                                rs.getLong("id")
+                        );
 
                         department.setCompanyId(
-                                rs.getLong("company_id"));
+                                rs.getLong("company_id")
+                        );
 
                         department.setName(
-                                rs.getString("name"));
+                                rs.getString("name")
+                        );
 
                         department.setActive(
-                                rs.getBoolean("active"));
+                                rs.getBoolean("active")
+                        );
 
                         return department;
                     },
                     id,
-                    companyId);
+                    companyId
+            );
 
         } catch (EmptyResultDataAccessException exception) {
 

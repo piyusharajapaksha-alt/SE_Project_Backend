@@ -82,7 +82,7 @@ public class DepartmentService {
     }
 
     // ==========================================================
-    // DELETE DEPARTMENT
+    // HARD DELETE DEPARTMENT
     // ==========================================================
 
     @Transactional
@@ -101,6 +101,11 @@ public class DepartmentService {
                 companyContextService
                         .getCurrentCompanyId();
 
+        // ------------------------------------------------------
+        // Make sure the department belongs to the current
+        // company.
+        // ------------------------------------------------------
+
         Department department =
                 departmentRepository.findById(
                         id,
@@ -114,12 +119,10 @@ public class DepartmentService {
             );
         }
 
-        if (!department.isActive()) {
-
-            throw new IllegalArgumentException(
-                    "Department is already inactive"
-            );
-        }
+        // ------------------------------------------------------
+        // Do not allow deletion if employees still use this
+        // department.
+        // ------------------------------------------------------
 
         int employeeCount =
                 departmentRepository
@@ -139,6 +142,12 @@ public class DepartmentService {
                             + "Reassign those employees first."
             );
         }
+
+        // ------------------------------------------------------
+        // HARD DELETE
+        //
+        // The database row is completely removed.
+        // ------------------------------------------------------
 
         int deleted =
                 departmentRepository.delete(
