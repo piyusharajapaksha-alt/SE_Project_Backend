@@ -2,6 +2,8 @@ package com.staffhub.service;
 
 import com.staffhub.model.Grievance;
 import com.staffhub.repository.GrievanceRepository;
+
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -11,11 +13,23 @@ public class GrievanceService {
 
     private final GrievanceRepository grievanceRepository;
 
+    private final JdbcTemplate jdbcTemplate;
+
+    private final CompanyContextService companyContextService;
+
     public GrievanceService(
-            GrievanceRepository grievanceRepository
+            GrievanceRepository grievanceRepository,
+            JdbcTemplate jdbcTemplate,
+            CompanyContextService companyContextService
     ) {
         this.grievanceRepository =
                 grievanceRepository;
+
+        this.jdbcTemplate =
+                jdbcTemplate;
+
+        this.companyContextService =
+                companyContextService;
     }
 
     // ============================================================
@@ -47,9 +61,7 @@ public class GrievanceService {
             Long id
     ) {
 
-        return grievanceRepository.findById(
-                id
-        );
+        return grievanceRepository.findById(id);
     }
 
     // ============================================================
@@ -62,9 +74,7 @@ public class GrievanceService {
 
         if (
                 grievance.getEmployeeId() == null
-                        || grievance
-                        .getEmployeeId()
-                        .isBlank()
+                        || grievance.getEmployeeId().isBlank()
         ) {
 
             throw new IllegalArgumentException(
@@ -74,9 +84,7 @@ public class GrievanceService {
 
         if (
                 grievance.getCategory() == null
-                        || grievance
-                        .getCategory()
-                        .isBlank()
+                        || grievance.getCategory().isBlank()
         ) {
 
             throw new IllegalArgumentException(
@@ -86,9 +94,7 @@ public class GrievanceService {
 
         if (
                 grievance.getDescription() == null
-                        || grievance
-                        .getDescription()
-                        .isBlank()
+                        || grievance.getDescription().isBlank()
         ) {
 
             throw new IllegalArgumentException(
@@ -97,9 +103,7 @@ public class GrievanceService {
         }
 
         String description =
-                grievance
-                        .getDescription()
-                        .trim();
+                grievance.getDescription().trim();
 
         if (description.length() < 20) {
 
@@ -107,6 +111,10 @@ public class GrievanceService {
                     "Description must contain at least 20 characters"
             );
         }
+
+        grievance.setEmployeeId(
+                grievance.getEmployeeId().trim()
+        );
 
         grievance.setCategory(
                 grievance.getCategory().trim()
@@ -118,20 +126,15 @@ public class GrievanceService {
 
         if (
                 grievance.getPriority() == null
-                        || grievance
-                        .getPriority()
-                        .isBlank()
+                        || grievance.getPriority().isBlank()
         ) {
 
-            grievance.setPriority(
-                    "Medium"
-            );
+            grievance.setPriority("Medium");
+
         } else {
 
             grievance.setPriority(
-                    grievance
-                            .getPriority()
-                            .trim()
+                    grievance.getPriority().trim()
             );
         }
 
@@ -162,9 +165,7 @@ public class GrievanceService {
 
         if (
                 grievance.getCategory() == null
-                        || grievance
-                        .getCategory()
-                        .isBlank()
+                        || grievance.getCategory().isBlank()
         ) {
 
             throw new IllegalArgumentException(
@@ -174,9 +175,7 @@ public class GrievanceService {
 
         if (
                 grievance.getDescription() == null
-                        || grievance
-                        .getDescription()
-                        .isBlank()
+                        || grievance.getDescription().isBlank()
         ) {
 
             throw new IllegalArgumentException(
@@ -185,9 +184,7 @@ public class GrievanceService {
         }
 
         String description =
-                grievance
-                        .getDescription()
-                        .trim();
+                grievance.getDescription().trim();
 
         if (description.length() < 20) {
 
@@ -208,16 +205,13 @@ public class GrievanceService {
         }
 
         int updated =
-                grievanceRepository
-                        .updateOwnGrievance(
-                                id,
-                                employeeId.trim(),
-                                grievance
-                                        .getCategory()
-                                        .trim(),
-                                priority.trim(),
-                                description
-                        );
+                grievanceRepository.updateOwnGrievance(
+                        id,
+                        employeeId.trim(),
+                        grievance.getCategory().trim(),
+                        priority.trim(),
+                        description
+                );
 
         if (updated == 0) {
 
@@ -247,11 +241,10 @@ public class GrievanceService {
         }
 
         int deleted =
-                grievanceRepository
-                        .deleteOwnGrievance(
-                                id,
-                                employeeId.trim()
-                        );
+                grievanceRepository.deleteOwnGrievance(
+                        id,
+                        employeeId.trim()
+                );
 
         if (deleted == 0) {
 
@@ -268,7 +261,7 @@ public class GrievanceService {
     public void updateStatus(
             Long id,
             String status,
-            String updatedBy
+            String assignedTo
     ) {
 
         if (
@@ -281,11 +274,119 @@ public class GrievanceService {
             );
         }
 
-        grievanceRepository.updateStatus(
-                id,
-                status,
-                updatedBy
-        );
+        String cleanStatus =
+                status.trim();
+
+        String cleanAssignedTo =
+                assignedTo == null
+                        ? null
+                        : assignedTo.trim();
+
+        // --------------------------------------------------------
+        // Assignment validation
+        // --------------------------------------------------------
+
+        if (
+                cleanStatus.equalsIgnoreCase(
+                        "Assigned"
+                )
+        ) {
+
+            if (
+                    cleanAssignedTo == null
+                            || cleanAssignedTo.isBlank()
+            ) {
+
+                throw new IllegalArgumentException(
+                        "An employee must be selected when assigning a grievance"
+                );
+            }
+
+            validateAssignee(
+                    cleanAssignedTo
+            );
+        }
+
+        // --------------------------------------------------------
+        // Prevent an arbitrary employee number from being
+        // written when changing another status.
+        // --------------------------------------------------------
+
+        if (
+                !cleanStatus.equalsIgnoreCase(
+                        "Assigned"
+                )
+                && cleanAssignedTo != null
+                && !cleanAssignedTo.isBlank()
+        ) {
+
+            throw new IllegalArgumentException(
+                    "An assignee can only be supplied when status is Assigned"
+            );
+        }
+
+        int updated =
+                grievanceRepository.updateStatus(
+                        id,
+                        cleanStatus,
+                        cleanAssignedTo
+                );
+
+        if (updated == 0) {
+
+            throw new IllegalArgumentException(
+                    "Grievance not found or could not be updated"
+            );
+        }
+    }
+
+    // ============================================================
+    // VALIDATE ASSIGNEE
+    // ============================================================
+    //
+    // Only employees in the current company who are:
+    //
+    // - HR Manager
+    // - Grievance Officer
+    //
+    // can be assigned a grievance.
+    //
+    // ============================================================
+
+    private void validateAssignee(
+            String employeeNumber
+    ) {
+
+        Long companyId =
+                companyContextService
+                        .getCurrentCompanyId();
+
+        Integer count =
+                jdbcTemplate.queryForObject(
+                        """
+                        SELECT COUNT(*)
+                        FROM employees
+                        WHERE employee_number = ?
+                          AND company_id = ?
+                          AND (
+                              role = 'HR Manager'
+                              OR role = 'Grievance Officer'
+                          )
+                        """,
+                        Integer.class,
+                        employeeNumber,
+                        companyId
+                );
+
+        if (
+                count == null
+                        || count == 0
+        ) {
+
+            throw new IllegalArgumentException(
+                    "Selected employee is not an eligible grievance officer or HR Manager in this company"
+            );
+        }
     }
 
     // ============================================================
@@ -320,7 +421,7 @@ public class GrievanceService {
 
         grievanceRepository.addResponse(
                 grievanceId,
-                employeeId,
+                employeeId.trim(),
                 text.trim()
         );
     }

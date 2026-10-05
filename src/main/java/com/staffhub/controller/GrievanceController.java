@@ -2,6 +2,7 @@ package com.staffhub.controller;
 
 import com.staffhub.model.Grievance;
 import com.staffhub.service.GrievanceService;
+
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -70,9 +71,7 @@ public class GrievanceController {
             @PathVariable Long id
     ) {
 
-        return grievanceService.getById(
-                id
-        );
+        return grievanceService.getById(id);
     }
 
     // ============================================================
@@ -91,12 +90,6 @@ public class GrievanceController {
 
     // ============================================================
     // UPDATE OWN GRIEVANCE
-    //
-    // employeeId comes from the logged-in employee in the
-    // current StaffHub authentication architecture.
-    //
-    // The service/repository additionally verifies that the
-    // grievance belongs to that employee and is still New.
     // ============================================================
 
     @PutMapping("/{id}")
@@ -153,7 +146,22 @@ public class GrievanceController {
     }
 
     // ============================================================
-    // UPDATE STATUS
+    // UPDATE STATUS / ASSIGN
+    // ============================================================
+    //
+    // Request:
+    //
+    // {
+    //     "status": "Assigned",
+    //     "assignedTo": "EMP005"
+    // }
+    //
+    // For normal status update:
+    //
+    // {
+    //     "status": "Resolved"
+    // }
+    //
     // ============================================================
 
     @PutMapping("/{id}/status")
@@ -162,12 +170,18 @@ public class GrievanceController {
             @RequestBody Map<String, String> body
     ) {
 
+        String status =
+                body.get("status");
+
+        String assignedTo =
+                body.get("assignedTo");
+
         grievanceService.updateStatus(
                 id,
-                body.get("status"),
-                body.get("updatedBy")
+                status,
+                assignedTo
         );
 
-        return "Status updated successfully";
+        return "Grievance status updated successfully";
     }
 }

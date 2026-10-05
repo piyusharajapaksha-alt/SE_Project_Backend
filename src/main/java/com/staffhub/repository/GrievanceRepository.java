@@ -514,47 +514,68 @@ public class GrievanceRepository {
     // UPDATE STATUS
     // ============================================================
 
-    public int updateStatus(
-            Long id,
-            String status,
-            String assignedTo
+    // ============================================================
+// UPDATE STATUS / ASSIGN
+// ============================================================
+
+public int updateStatus(
+        Long id,
+        String status,
+        String assignedTo
+) {
+
+    // --------------------------------------------------------
+    // Assignment
+    // --------------------------------------------------------
+
+    if (
+            status != null
+                    && status.equalsIgnoreCase("Assigned")
     ) {
 
         if (
-                assignedTo != null
-                        && !assignedTo.isBlank()
+                assignedTo == null
+                        || assignedTo.isBlank()
         ) {
 
-            String sql = """
-                UPDATE grievances
-                SET
-                    status = ?,
-                    assigned_to = ?
-                WHERE id = ?
-                """;
-
-            return jdbcTemplate.update(
-                    sql,
-                    status,
-                    assignedTo.trim(),
-                    id
-            );
+            return 0;
         }
 
         String sql = """
             UPDATE grievances
             SET
-                status = ?
+                status = ?,
+                assigned_to = ?
             WHERE id = ?
             """;
 
         return jdbcTemplate.update(
                 sql,
-                status,
+                status.trim(),
+                assignedTo.trim(),
                 id
         );
     }
 
+    // --------------------------------------------------------
+    // Normal status update
+    //
+    // Existing assigned employee is intentionally preserved.
+    // --------------------------------------------------------
+
+    String sql = """
+        UPDATE grievances
+        SET
+            status = ?
+        WHERE id = ?
+        """;
+
+    return jdbcTemplate.update(
+            sql,
+            status.trim(),
+            id
+    );
+}
     // ============================================================
     // ADD RESPONSE
     // ============================================================
