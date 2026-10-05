@@ -15,8 +15,7 @@ public class DepartmentRepository {
     private final JdbcTemplate jdbcTemplate;
 
     public DepartmentRepository(
-            JdbcTemplate jdbcTemplate
-    ) {
+            JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -25,8 +24,7 @@ public class DepartmentRepository {
     // ==========================================================
 
     public List<Department> findAll(
-            Long companyId
-    ) {
+            Long companyId) {
 
         String sql = """
                 SELECT
@@ -44,29 +42,23 @@ public class DepartmentRepository {
                 sql,
                 (rs, rowNum) -> {
 
-                    Department department =
-                            new Department();
+                    Department department = new Department();
 
                     department.setId(
-                            rs.getLong("id")
-                    );
+                            rs.getLong("id"));
 
                     department.setCompanyId(
-                            rs.getLong("company_id")
-                    );
+                            rs.getLong("company_id"));
 
                     department.setName(
-                            rs.getString("name")
-                    );
+                            rs.getString("name"));
 
                     department.setActive(
-                            rs.getBoolean("active")
-                    );
+                            rs.getBoolean("active"));
 
                     return department;
                 },
-                companyId
-        );
+                companyId);
     }
 
     // ==========================================================
@@ -75,13 +67,10 @@ public class DepartmentRepository {
 
     public String findCanonicalName(
             String name,
-            Long companyId
-    ) {
+            Long companyId) {
 
-        if (
-                name == null ||
-                name.trim().isEmpty()
-        ) {
+        if (name == null ||
+                name.trim().isEmpty()) {
             return null;
         }
 
@@ -89,21 +78,18 @@ public class DepartmentRepository {
 
             return jdbcTemplate.queryForObject(
                     """
-                    SELECT TOP 1 name
-                    FROM dbo.departments
-                    WHERE company_id = ?
-                      AND active = 1
-                      AND LOWER(LTRIM(RTRIM(name))) =
-                          LOWER(LTRIM(RTRIM(?)))
-                    """,
+                            SELECT TOP 1 name
+                            FROM dbo.departments
+                            WHERE company_id = ?
+                              AND active = 1
+                              AND LOWER(LTRIM(RTRIM(name))) =
+                                  LOWER(LTRIM(RTRIM(?)))
+                            """,
                     String.class,
                     companyId,
-                    name.trim()
-            );
+                    name.trim());
 
-        } catch (
-                EmptyResultDataAccessException exception
-        ) {
+        } catch (EmptyResultDataAccessException exception) {
 
             return null;
         }
@@ -115,50 +101,37 @@ public class DepartmentRepository {
 
     public List<String> findCanonicalNames(
             List<String> names,
-            Long companyId
-    ) {
+            Long companyId) {
 
-        List<String> result =
-                new ArrayList<>();
+        List<String> result = new ArrayList<>();
 
-        if (
-                names == null ||
-                names.isEmpty()
-        ) {
+        if (names == null ||
+                names.isEmpty()) {
             return result;
         }
 
         for (String name : names) {
 
-            if (
-                    name == null ||
-                    name.trim().isEmpty()
-            ) {
+            if (name == null ||
+                    name.trim().isEmpty()) {
                 continue;
             }
 
-            String canonical =
-                    findCanonicalName(
-                            name,
-                            companyId
-                    );
+            String canonical = findCanonicalName(
+                    name,
+                    companyId);
 
             if (canonical == null) {
 
                 throw new IllegalArgumentException(
                         "Department does not exist in the current company: "
-                                + name.trim()
-                );
+                                + name.trim());
             }
 
-            boolean duplicate =
-                    result.stream()
-                            .anyMatch(
-                                    existing ->
-                                            existing.equalsIgnoreCase(
-                                                    canonical
-                                            )
-                            );
+            boolean duplicate = result.stream()
+                    .anyMatch(
+                            existing -> existing.equalsIgnoreCase(
+                                    canonical));
 
             if (!duplicate) {
                 result.add(canonical);
@@ -172,78 +145,38 @@ public class DepartmentRepository {
     // CREATE DEPARTMENT
     // ==========================================================
 
-    public Department create(
-            String name,
-            Long companyId
-    ) {
+    public Department create(String name, Long companyId) {
 
-        String cleanName =
-                name == null
-                        ? ""
-                        : name.trim();
+        String cleanName = name.trim();
 
-        if (cleanName.isEmpty()) {
-
-            throw new IllegalArgumentException(
-                    "Department name is required"
-            );
-        }
-
-        Integer existing =
-                jdbcTemplate.queryForObject(
-                        """
+        Integer count = jdbcTemplate.queryForObject(
+                """
                         SELECT COUNT(*)
                         FROM dbo.departments
                         WHERE company_id = ?
-                          AND LOWER(LTRIM(RTRIM(name))) =
-                              LOWER(LTRIM(RTRIM(?)))
+                          AND LOWER(LTRIM(RTRIM(name))) = LOWER(LTRIM(RTRIM(?)))
                         """,
-                        Integer.class,
-                        companyId,
-                        cleanName
-                );
+                Integer.class,
+                companyId,
+                cleanName);
 
-        if (
-                existing != null &&
-                existing > 0
-        ) {
-
+        if (count != null && count > 0) {
             throw new IllegalArgumentException(
-                    "A department with this name already exists"
-            );
+                    "Department already exists: " + cleanName);
         }
 
-        Long id =
-                jdbcTemplate.queryForObject(
-                        """
+        Long id = jdbcTemplate.queryForObject(
+                """
                         INSERT INTO dbo.departments
-                        (
-                            company_id,
-                            name,
-                            active
-                        )
+                            (company_id, name, active)
                         OUTPUT INSERTED.id
-                        VALUES
-                        (
-                            ?,
-                            ?,
-                            1
-                        )
+                        VALUES (?, ?, 1)
                         """,
-                        Long.class,
-                        companyId,
-                        cleanName
-                );
+                Long.class,
+                companyId,
+                cleanName);
 
-        Department department =
-                new Department();
-
-        department.setId(id);
-        department.setCompanyId(companyId);
-        department.setName(cleanName);
-        department.setActive(true);
-
-        return department;
+        return findById(id, companyId);
     }
 
     // ==========================================================
@@ -252,22 +185,19 @@ public class DepartmentRepository {
 
     public int countEmployeesUsingDepartment(
             String departmentName,
-            Long companyId
-    ) {
+            Long companyId) {
 
-        Integer count =
-                jdbcTemplate.queryForObject(
-                        """
+        Integer count = jdbcTemplate.queryForObject(
+                """
                         SELECT COUNT(*)
                         FROM dbo.employees
                         WHERE company_id = ?
                           AND LOWER(LTRIM(RTRIM(department))) =
                               LOWER(LTRIM(RTRIM(?)))
                         """,
-                        Integer.class,
-                        companyId,
-                        departmentName
-                );
+                Integer.class,
+                companyId,
+                departmentName);
 
         return count == null ? 0 : count;
     }
@@ -281,22 +211,15 @@ public class DepartmentRepository {
     // the department name.
     // ==========================================================
 
-    public int delete(
-            Long id,
-            Long companyId
-    ) {
-
-        return jdbcTemplate.update(
+    public void delete(Long id, Long companyId) {
+        jdbcTemplate.update(
                 """
-                UPDATE dbo.departments
-                SET active = 0
-                WHERE id = ?
-                  AND company_id = ?
-                  AND active = 1
-                """,
+                        DELETE FROM dbo.departments
+                        WHERE id = ?
+                          AND company_id = ?
+                        """,
                 id,
-                companyId
-        );
+                companyId);
     }
 
     // ==========================================================
@@ -305,52 +228,43 @@ public class DepartmentRepository {
 
     public Department findById(
             Long id,
-            Long companyId
-    ) {
+            Long companyId) {
 
         try {
 
             return jdbcTemplate.queryForObject(
                     """
-                    SELECT
-                        id,
-                        company_id,
-                        name,
-                        active
-                    FROM dbo.departments
-                    WHERE id = ?
-                      AND company_id = ?
-                    """,
+                            SELECT
+                                id,
+                                company_id,
+                                name,
+                                active
+                            FROM dbo.departments
+                            WHERE id = ?
+                              AND company_id = ?
+                            """,
                     (rs, rowNum) -> {
 
-                        Department department =
-                                new Department();
+                        Department department = new Department();
 
                         department.setId(
-                                rs.getLong("id")
-                        );
+                                rs.getLong("id"));
 
                         department.setCompanyId(
-                                rs.getLong("company_id")
-                        );
+                                rs.getLong("company_id"));
 
                         department.setName(
-                                rs.getString("name")
-                        );
+                                rs.getString("name"));
 
                         department.setActive(
-                                rs.getBoolean("active")
-                        );
+                                rs.getBoolean("active"));
 
                         return department;
                     },
                     id,
-                    companyId
-            );
+                    companyId);
 
-        } catch (
-                EmptyResultDataAccessException exception
-        ) {
+        } catch (EmptyResultDataAccessException exception) {
 
             return null;
         }
