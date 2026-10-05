@@ -2,6 +2,7 @@ package com.staffhub.service;
 
 import com.staffhub.model.TrainingProgram;
 import com.staffhub.repository.TrainingRepository;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,10 +15,25 @@ public class TrainingService {
 
     private final TrainingRepository trainingRepository;
 
+    private final DepartmentService departmentService;
+
+    private final CompanyContextService companyContextService;
+
+
     public TrainingService(
-            TrainingRepository trainingRepository
+            TrainingRepository trainingRepository,
+            DepartmentService departmentService,
+            CompanyContextService companyContextService
     ) {
-        this.trainingRepository = trainingRepository;
+
+        this.trainingRepository =
+                trainingRepository;
+
+        this.departmentService =
+                departmentService;
+
+        this.companyContextService =
+                companyContextService;
     }
 
 
@@ -27,7 +43,24 @@ public class TrainingService {
 
     public List<TrainingProgram> getAllTrainingPrograms() {
 
-        return trainingRepository.findAll();
+        List<TrainingProgram> programs =
+                trainingRepository.findAll();
+
+        /*
+         * Existing training rows are normalized here too.
+         * This keeps old data compatible after the department
+         * table is introduced.
+         */
+        for (TrainingProgram program : programs) {
+
+            program.setTrainingFor(
+                    normalizeDepartments(
+                            program.getTrainingFor()
+                    )
+            );
+        }
+
+        return programs;
     }
 
 
@@ -39,7 +72,20 @@ public class TrainingService {
             Long id
     ) {
 
-        return trainingRepository.findById(id);
+        TrainingProgram program =
+                trainingRepository.findById(id);
+
+        if (program == null) {
+            return null;
+        }
+
+        program.setTrainingFor(
+                normalizeDepartments(
+                        program.getTrainingFor()
+                )
+        );
+
+        return program;
     }
 
 
@@ -55,17 +101,8 @@ public class TrainingService {
         validateTraining(training);
 
         /*
-         * Normalize department names before saving.
-         *
-         * Example:
-         *
-         * " HR "
-         * "hr"
-         * "HR"
-         *
-         * become one value:
-         *
-         * "HR"
+         * Convert whatever React sent into the exact
+         * department names stored in the department table.
          */
         training.setTrainingFor(
                 normalizeDepartments(
@@ -74,22 +111,16 @@ public class TrainingService {
         );
 
         TrainingProgram created =
-                trainingRepository.create(training);
+                trainingRepository.create(
+                        training
+                );
 
-        /*
-         * Automatically assign every employee
-         * belonging to the selected departments.
-         */
         synchronizeDepartmentAssignments(
                 created.getId(),
                 created.getTrainingFor()
         );
 
-        /*
-         * Reload the training so the response contains
-         * the final assignment list.
-         */
-        return trainingRepository.findById(
+        return getTrainingProgramById(
                 created.getId()
         );
     }
@@ -117,23 +148,20 @@ public class TrainingService {
             );
         }
 
-        /*
-         * Do not allow capacity to become lower than
-         * the current number of registrations.
-         */
         int registeredCount =
-                trainingRepository.countRegistrations(id);
+                trainingRepository
+                        .countRegistrations(id);
 
-        if (training.getCapacity() < registeredCount) {
+        if (
+                training.getCapacity() <
+                registeredCount
+        ) {
 
             throw new IllegalArgumentException(
                     "Capacity cannot be lower than the current number of registered employees"
             );
         }
 
-        /*
-         * Normalize departments before saving.
-         */
         training.setTrainingFor(
                 normalizeDepartments(
                         training.getTrainingFor()
@@ -146,27 +174,12 @@ public class TrainingService {
                         training
                 );
 
-        /*
-         * Synchronize employee assignments.
-         *
-         * This does two things:
-         *
-         * 1. Removes employees belonging to departments
-         *    that are no longer selected.
-         *
-         * 2. Adds all employees belonging to the
-         *    newly/currently selected departments.
-         */
         synchronizeDepartmentAssignments(
                 id,
                 updated.getTrainingFor()
         );
 
-        /*
-         * Reload the training so the frontend receives
-         * the final assignment list.
-         */
-        return trainingRepository.findById(id);
+        return getTrainingProgramById(id);
     }
 
 
@@ -203,9 +216,10 @@ public class TrainingService {
 
         ensureTrainingExists(trainingId);
 
-        return trainingRepository.findTrainingEmployees(
-                trainingId
-        );
+        return trainingRepository
+                .findTrainingEmployees(
+                        trainingId
+                );
     }
 
 
@@ -221,8 +235,10 @@ public class TrainingService {
 
         ensureTrainingExists(trainingId);
 
-        if (employeeIds == null ||
-                employeeIds.isEmpty()) {
+        if (
+                employeeIds == null ||
+                employeeIds.isEmpty()
+        ) {
 
             throw new IllegalArgumentException(
                     "At least one employee must be selected"
@@ -231,21 +247,26 @@ public class TrainingService {
 
         for (String employeeId : employeeIds) {
 
-            if (employeeId == null ||
-                    employeeId.trim().isEmpty()) {
-
+            if (
+                    employeeId == null ||
+                    employeeId.trim().isEmpty()
+            ) {
                 continue;
             }
 
             String normalized =
                     employeeId.trim();
 
-            if (!trainingRepository.employeeExists(
-                    normalized
-            )) {
+            if (
+                    !trainingRepository
+                            .employeeExists(
+                                    normalized
+                            )
+            ) {
 
                 throw new IllegalArgumentException(
-                        "Employee not found: " + normalized
+                        "Employee not found: "
+                                + normalized
                 );
             }
 
@@ -269,23 +290,26 @@ public class TrainingService {
 
         ensureTrainingExists(trainingId);
 
-        if (employeeId == null ||
-                employeeId.trim().isEmpty()) {
+        if (
+                employeeId == null ||
+                employeeId.trim().isEmpty()
+        ) {
 
             throw new IllegalArgumentException(
                     "Employee ID is required"
             );
         }
 
-        trainingRepository.removeEmployeeAssignment(
-                trainingId,
-                employeeId.trim()
-        );
+        trainingRepository
+                .removeEmployeeAssignment(
+                        trainingId,
+                        employeeId.trim()
+                );
     }
 
 
     // ============================================================
-    // REGISTER EMPLOYEE
+    // REGISTER
     // ============================================================
 
     @Transactional
@@ -296,8 +320,10 @@ public class TrainingService {
 
         ensureTrainingExists(trainingId);
 
-        if (employeeId == null ||
-                employeeId.trim().isEmpty()) {
+        if (
+                employeeId == null ||
+                employeeId.trim().isEmpty()
+        ) {
 
             throw new IllegalArgumentException(
                     "Employee ID is required"
@@ -307,12 +333,16 @@ public class TrainingService {
         String normalized =
                 employeeId.trim();
 
-        if (!trainingRepository.employeeExists(
-                normalized
-        )) {
+        if (
+                !trainingRepository
+                        .employeeExists(
+                                normalized
+                        )
+        ) {
 
             throw new IllegalArgumentException(
-                    "Employee not found: " + normalized
+                    "Employee not found: "
+                            + normalized
             );
         }
 
@@ -321,28 +351,35 @@ public class TrainingService {
                         trainingId
                 );
 
-        if ("Cancelled".equals(
-                training.getStatus()
-        )) {
+        if (
+                "Cancelled".equals(
+                        training.getStatus()
+                )
+        ) {
 
             throw new IllegalArgumentException(
                     "Cannot register for a cancelled training"
             );
         }
 
-        if ("Completed".equals(
-                training.getStatus()
-        )) {
+        if (
+                "Completed".equals(
+                        training.getStatus()
+                )
+        ) {
 
             throw new IllegalArgumentException(
                     "Cannot register for a completed training"
             );
         }
 
-        if (trainingRepository.isEmployeeRegistered(
-                trainingId,
-                normalized
-        )) {
+        if (
+                trainingRepository
+                        .isEmployeeRegistered(
+                                trainingId,
+                                normalized
+                        )
+        ) {
 
             throw new IllegalArgumentException(
                     "Employee is already registered for this training"
@@ -350,11 +387,15 @@ public class TrainingService {
         }
 
         int registeredCount =
-                trainingRepository.countRegistrations(
-                        trainingId
-                );
+                trainingRepository
+                        .countRegistrations(
+                                trainingId
+                        );
 
-        if (registeredCount >= training.getCapacity()) {
+        if (
+                registeredCount >=
+                training.getCapacity()
+        ) {
 
             throw new IllegalArgumentException(
                     "Training capacity is full"
@@ -369,7 +410,7 @@ public class TrainingService {
 
 
     // ============================================================
-    // UNREGISTER EMPLOYEE
+    // UNREGISTER
     // ============================================================
 
     @Transactional
@@ -380,8 +421,10 @@ public class TrainingService {
 
         ensureTrainingExists(trainingId);
 
-        if (employeeId == null ||
-                employeeId.trim().isEmpty()) {
+        if (
+                employeeId == null ||
+                employeeId.trim().isEmpty()
+        ) {
 
             throw new IllegalArgumentException(
                     "Employee ID is required"
@@ -396,62 +439,54 @@ public class TrainingService {
 
 
     // ============================================================
-    // SYNCHRONIZE DEPARTMENT ASSIGNMENTS
+    // AUTOMATIC DEPARTMENT ASSIGNMENT
     // ============================================================
 
     private void synchronizeDepartmentAssignments(
             Long trainingId,
-            List<String> trainingFor
+            List<String> departments
     ) {
 
-        /*
-         * Always normalize before querying the database.
-         */
-        List<String> departments =
-                normalizeDepartments(trainingFor);
+        Long companyId =
+                companyContextService
+                        .getCurrentCompanyId();
 
-        /*
-         * Remove assignments belonging to departments
-         * that are no longer selected.
-         *
-         * Example:
-         *
-         * OLD:
-         * IT + HR
-         *
-         * NEW:
-         * IT
-         *
-         * HR employees are removed.
-         */
-        trainingRepository.removeAssignmentsOutsideDepartments(
-                trainingId,
-                departments
-        );
-
-        /*
-         * Find ALL employees belonging to the selected
-         * departments.
-         *
-         * Repository performs case-insensitive and
-         * whitespace-safe department matching.
-         */
-        List<String> employeeIds =
-                trainingRepository.findEmployeeNumbersByDepartments(
+        List<String> normalizedDepartments =
+                normalizeDepartments(
                         departments
                 );
 
         /*
+         * Remove employees who are no longer in
+         * a selected department.
+         */
+        trainingRepository
+                .removeAssignmentsOutsideDepartments(
+                        trainingId,
+                        normalizedDepartments,
+                        companyId
+                );
+
+        /*
+         * Find ALL employees belonging to the selected
+         * departments in THIS company.
+         */
+        List<String> employeeIds =
+                trainingRepository
+                        .findEmployeeNumbersByDepartments(
+                                normalizedDepartments,
+                                companyId
+                        );
+
+        /*
          * Assign every matching employee.
-         *
-         * The repository already prevents duplicate
-         * training assignments.
          */
         for (String employeeId : employeeIds) {
 
-            if (employeeId == null ||
-                    employeeId.trim().isEmpty()) {
-
+            if (
+                    employeeId == null ||
+                    employeeId.trim().isEmpty()
+            ) {
                 continue;
             }
 
@@ -464,65 +499,37 @@ public class TrainingService {
 
 
     // ============================================================
-    // NORMALIZE DEPARTMENTS
+    // DEPARTMENT NORMALIZATION
     // ============================================================
 
     private List<String> normalizeDepartments(
             List<String> departments
     ) {
 
-        List<String> normalized =
-                new ArrayList<>();
+        if (
+                departments == null ||
+                departments.isEmpty()
+        ) {
 
-        if (departments == null ||
-                departments.isEmpty()) {
-
-            return normalized;
+            return new ArrayList<>();
         }
 
-        for (String department : departments) {
-
-            if (department == null) {
-                continue;
-            }
-
-            String value =
-                    department.trim();
-
-            if (value.isEmpty()) {
-                continue;
-            }
-
-            /*
-             * Keep the first selected spelling for storage,
-             * but compare department names case-insensitively.
-             *
-             * Example:
-             *
-             * HR
-             * hr
-             * HR
-             *
-             * becomes:
-             *
-             * HR
-             */
-            boolean alreadyExists =
-                    normalized.stream()
-                            .anyMatch(
-                                    existing ->
-                                            existing.equalsIgnoreCase(
-                                                    value
-                                            )
-                            );
-
-            if (!alreadyExists) {
-
-                normalized.add(value);
-            }
-        }
-
-        return normalized;
+        /*
+         * DepartmentService checks the department table.
+         *
+         * There is NO:
+         *
+         * HR -> Human Resources
+         * IT -> Engineering
+         *
+         * mapping here.
+         *
+         * The database decides the valid department names.
+         */
+        return departmentService
+                .requireDepartments(
+                        departments
+                );
     }
 
 
@@ -541,98 +548,113 @@ public class TrainingService {
             );
         }
 
-
-        if (training.getTitle() == null ||
-                training.getTitle().trim().isEmpty()) {
+        if (
+                training.getTitle() == null ||
+                training.getTitle().trim().isEmpty()
+        ) {
 
             throw new IllegalArgumentException(
                     "Training title is required"
             );
         }
 
-
-        if (training.getTrainer() == null ||
-                training.getTrainer().trim().isEmpty()) {
+        if (
+                training.getTrainer() == null ||
+                training.getTrainer().trim().isEmpty()
+        ) {
 
             throw new IllegalArgumentException(
                     "Trainer is required"
             );
         }
 
-
-        if (training.getCategory() == null ||
-                training.getCategory().trim().isEmpty()) {
+        if (
+                training.getCategory() == null ||
+                training.getCategory().trim().isEmpty()
+        ) {
 
             throw new IllegalArgumentException(
                     "Category is required"
             );
         }
 
-
-        if (training.getStartDate() == null) {
+        if (
+                training.getStartDate() == null
+        ) {
 
             throw new IllegalArgumentException(
                     "Start date is required"
             );
         }
 
-
-        if (training.getEndDate() != null &&
+        if (
+                training.getEndDate() != null &&
                 training.getEndDate()
-                        .isBefore(training.getStartDate())) {
+                        .isBefore(
+                                training.getStartDate()
+                        )
+        ) {
 
             throw new IllegalArgumentException(
                     "End date cannot be before start date"
             );
         }
 
-
-        if (training.getLocation() == null ||
-                training.getLocation().trim().isEmpty()) {
+        if (
+                training.getLocation() == null ||
+                training.getLocation()
+                        .trim()
+                        .isEmpty()
+        ) {
 
             throw new IllegalArgumentException(
                     "Location is required"
             );
         }
 
-
-        if (training.getCapacity() == null ||
-                training.getCapacity() <= 0) {
+        if (
+                training.getCapacity() == null ||
+                training.getCapacity() <= 0
+        ) {
 
             throw new IllegalArgumentException(
                     "Capacity must be greater than 0"
             );
         }
 
-
-        if (training.getTrainingFor() == null ||
-                training.getTrainingFor().isEmpty()) {
+        if (
+                training.getTrainingFor() == null ||
+                training.getTrainingFor().isEmpty()
+        ) {
 
             throw new IllegalArgumentException(
                     "At least one department must be selected"
             );
         }
 
-
-        if (training.getStatus() == null ||
-                training.getStatus().trim().isEmpty()) {
+        if (
+                training.getStatus() == null ||
+                training.getStatus().trim().isEmpty()
+        ) {
 
             throw new IllegalArgumentException(
                     "Status is required"
             );
         }
 
+        List<String> validStatuses =
+                List.of(
+                        "Upcoming",
+                        "Ongoing",
+                        "Completed",
+                        "Cancelled"
+                );
 
-        List<String> validStatuses = List.of(
-                "Upcoming",
-                "Ongoing",
-                "Completed",
-                "Cancelled"
-        );
-
-        if (!validStatuses.contains(
-                training.getStatus()
-        )) {
+        if (
+                !validStatuses.contains(
+                        training.getStatus()
+                )
+        ) {
 
             throw new IllegalArgumentException(
                     "Invalid training status"
@@ -642,7 +664,7 @@ public class TrainingService {
 
 
     // ============================================================
-    // EXISTENCE CHECK
+    // EXISTENCE
     // ============================================================
 
     private void ensureTrainingExists(

@@ -335,9 +335,12 @@ public class TrainingRepository {
         // ============================================================
 
         public List<String> findEmployeeNumbersByDepartments(
-                        List<String> departments) {
+                        List<String> departments,
+                        Long companyId) {
 
-                if (departments == null || departments.isEmpty()) {
+                if (departments == null ||
+                                departments.isEmpty()) {
+
                         return new ArrayList<>();
                 }
 
@@ -348,20 +351,43 @@ public class TrainingRepository {
                                                 "?"));
 
                 String sql = """
-                                SELECT employee_number
-                                FROM employees
-                                WHERE LOWER(LTRIM(RTRIM(department))) IN (
+                                SELECT DISTINCT
+                                    e.employee_number
+
+                                FROM dbo.employees e
+
+                                INNER JOIN dbo.departments d
+                                    ON d.company_id = e.company_id
+                                   AND LOWER(LTRIM(RTRIM(d.name))) =
+                                       LOWER(LTRIM(RTRIM(e.department)))
+
+                                WHERE e.company_id = ?
+                                  AND d.company_id = ?
+                                  AND d.active = 1
+
+                                  AND LOWER(LTRIM(RTRIM(d.name))) IN (
                                 """
                                 + placeholders +
                                 """
-                                                )
-                                                ORDER BY employee_number
+                                                  )
+
+                                                ORDER BY
+                                                    e.employee_number
                                                 """;
+
+                List<Object> parameters = new ArrayList<>();
+
+                parameters.add(companyId);
+                parameters.add(companyId);
+                parameters.addAll(departments);
 
                 return jdbcTemplate.query(
                                 sql,
-                                departments.toArray(),
-                                (resultSet, rowNumber) -> resultSet.getString("employee_number"));
+                                parameters.toArray(),
+                                (resultSet, rowNumber) -> resultSet.getString(
+                                                "employee_number"));
+        }departments.toArray(),(resultSet,rowNumber)->resultSet.getString("employee_number"));
+
         }
 
         // ============================================================
@@ -370,9 +396,11 @@ public class TrainingRepository {
 
         public void removeAssignmentsOutsideDepartments(
                         Long trainingId,
-                        List<String> departments) {
+                        List<String> departments,
+                        Long companyId) {
 
-                if (departments == null || departments.isEmpty()) {
+                if (departments == null ||
+                                departments.isEmpty()) {
 
                         jdbcTemplate.update(
                                         """
@@ -392,21 +420,38 @@ public class TrainingRepository {
 
                 String sql = """
                                 DELETE FROM training_assignments
+
                                 WHERE training_id = ?
-                                  AND employee_id NOT IN (
-                                      SELECT employee_number
-                                      FROM employees
-                                      WHERE LOWER(LTRIM(RTRIM(department))) IN (
+
+                                  AND employee_id NOT IN
+                                  (
+                                      SELECT DISTINCT
+                                          e.employee_number
+
+                                      FROM dbo.employees e
+
+                                      INNER JOIN dbo.departments d
+                                          ON d.company_id = e.company_id
+                                         AND LOWER(LTRIM(RTRIM(d.name))) =
+                                             LOWER(LTRIM(RTRIM(e.department)))
+
+                                      WHERE e.company_id = ?
+                                        AND d.company_id = ?
+                                        AND d.active = 1
+
+                                        AND LOWER(LTRIM(RTRIM(d.name))) IN (
                                 """
                                 + placeholders +
                                 """
-                                                      )
+                                                        )
                                                   )
                                                 """;
 
                 List<Object> parameters = new ArrayList<>();
 
                 parameters.add(trainingId);
+                parameters.add(companyId);
+                parameters.add(companyId);
                 parameters.addAll(departments);
 
                 jdbcTemplate.update(
