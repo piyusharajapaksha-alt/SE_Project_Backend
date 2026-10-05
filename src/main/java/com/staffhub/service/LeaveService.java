@@ -1,7 +1,9 @@
 package com.staffhub.service;
 
 import com.staffhub.model.Leave;
+import com.staffhub.repository.AuthRepository;
 import com.staffhub.repository.LeaveRepository;
+
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -14,11 +16,18 @@ public class LeaveService {
 
     private final LeaveRepository leaveRepository;
 
+    private final AuthRepository authRepository;
+
     public LeaveService(
-            LeaveRepository leaveRepository
+            LeaveRepository leaveRepository,
+            AuthRepository authRepository
     ) {
+
         this.leaveRepository =
                 leaveRepository;
+
+        this.authRepository =
+                authRepository;
     }
 
     // ============================================================
@@ -52,6 +61,7 @@ public class LeaveService {
                 leaveRepository.findById(id);
 
         if (leave == null) {
+
             throw new IllegalArgumentException(
                     "Leave request not found"
             );
@@ -73,7 +83,7 @@ public class LeaveService {
         String employeeId =
                 leave.getEmployeeId().trim();
 
-        // Make sure the employee really exists.
+        // Make sure the employee exists.
         if (!leaveRepository.employeeExists(
                 employeeId
         )) {
@@ -88,12 +98,130 @@ public class LeaveService {
                 employeeId
         );
 
+        // Every newly submitted leave starts as Pending.
         leave.setStatus(
                 "Pending"
         );
 
         return leaveRepository.create(
                 leave
+        );
+    }
+
+    // ============================================================
+    // UPDATE PENDING LEAVE
+    //
+    // SECURITY:
+    //
+    // The employee ID supplied by the frontend is NOT trusted.
+    //
+    // Instead, the currently authenticated email is used to find
+    // the real employee account.
+    //
+    // This prevents:
+    //
+    // PUT /api/leave/10
+    //
+    // from being used by another employee to modify request 10.
+    // ============================================================
+
+    public Leave updatePendingLeave(
+            Long id,
+            Leave updatedLeave,
+            String authenticatedEmail
+    ) {
+
+        if (
+                authenticatedEmail == null
+                        || authenticatedEmail.isBlank()
+        ) {
+
+            throw new IllegalArgumentException(
+                    "Authenticated user is required"
+            );
+        }
+
+        // --------------------------------------------------------
+        // Find currently logged-in account
+        // --------------------------------------------------------
+
+        AuthRepository.AuthUserRecord account =
+                authRepository.findByEmail(
+                        authenticatedEmail.trim()
+                );
+
+        if (
+                account == null
+                        || !account.enabled()
+        ) {
+
+            throw new IllegalArgumentException(
+                    "Authenticated user account was not found"
+            );
+        }
+
+        // --------------------------------------------------------
+        // Only employee accounts can edit leave.
+        //
+        // Owners are not employees.
+        // --------------------------------------------------------
+
+        if (
+                account.employee() == null
+        ) {
+
+            throw new IllegalArgumentException(
+                    "Only employees can edit leave requests"
+            );
+        }
+
+        String employeeNumber =
+                account.employee()
+                        .getEmployeeNumber();
+
+        if (
+                employeeNumber == null
+                        || employeeNumber.isBlank()
+        ) {
+
+            throw new IllegalArgumentException(
+                    "Employee number was not found for the logged-in user"
+            );
+        }
+
+        employeeNumber =
+                employeeNumber.trim();
+
+        // --------------------------------------------------------
+        // Validate edited values
+        // --------------------------------------------------------
+
+        validateLeave(
+                updatedLeave
+        );
+
+        // --------------------------------------------------------
+        // Do NOT trust employeeId from request body.
+        //
+        // The authenticated employee number is used instead.
+        // --------------------------------------------------------
+
+        updatedLeave.setEmployeeId(
+                employeeNumber
+        );
+
+        // --------------------------------------------------------
+        // Update only if:
+        //
+        // id matches
+        // employee_id matches logged-in employee
+        // status = Pending
+        // --------------------------------------------------------
+
+        return leaveRepository.updatePending(
+                id,
+                employeeNumber,
+                updatedLeave
         );
     }
 
@@ -209,7 +337,6 @@ public class LeaveService {
                         year
                 );
 
-        // StaffHub yearly allocation.
         int annualTotal = 14;
         int sickTotal = 7;
         int personalTotal = 5;
@@ -282,8 +409,6 @@ public class LeaveService {
         String type =
                 leave.getType().trim();
 
-        // Frontend contains all six types,
-        // therefore backend must accept all six.
         if (
                 !type.equals("Annual Leave")
                         && !type.equals("Sick Leave")
